@@ -1,0 +1,17 @@
+*.png
+utils/__pycache__/
+utils/newtonRaphson.py
+tmp/
+.obsidian/
+docu/.obsidian/
+docu/.pandoc/
+.vscode/
+.DS_Store
+docu/.DS_Store
+docu/Theory Guide to Numerical Model/.DS_Store
+notebooks/plots_talk_munich.ipynb
+figures/title_slide.png
+input/
+output/
+figures/
+*.pdf
