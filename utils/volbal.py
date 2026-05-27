@@ -127,8 +127,8 @@ def volbal_coupled_permaFoam(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     lambda_eff_new = petro.effective_thermalconductivity(theta_l_new, theta_i_new, Theta_s)
 
     # Temporal storage term 
-    storage_new = C_eff_new * T_new - rho_i * H_f * theta_i_new
-    storage_old = C_eff_old * T_old - rho_i * H_f * theta_i_old
+    storage_new = (C_eff_new * T_new - rho_i * H_f * theta_i_new)/dt
+    storage_old = (C_eff_old * T_old - rho_i * H_f * theta_i_old)/dt
     res_T = storage_new - storage_old
 
     # Convective and conductive flux terms
@@ -142,7 +142,7 @@ def volbal_coupled_permaFoam(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     res_total = jnp.concatenate([res_rich.ravel(), res_T.ravel()])
     return res_total, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_new, theta_i_new
 
-# @partial(jax.jit,static_argnames=(['rho_i', 'H_f', 'rho_l', 'c_l','CN']))
+@partial(jax.jit,static_argnames=(['rho_i', 'H_f', 'rho_l', 'c_l','CN']))
 def volbal_coupled_drying(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt, Theta_s, Theta_r, alpha, N, Ksat, rho_i, H_f, rho_l, c_l, X, Z, CN):
     """
     Calculates the residual of the heat equation with phase change.
@@ -208,14 +208,9 @@ def volbal_coupled_drying(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt
 
     # Relative permeability
     krel_new = petro.relperm(Se_new, N)
-    
-    # imp_old = petro.impedance_factor(theta_i_old)
-    # imp_new = petro.impedance_factor(theta_i_new)
-    # krel_new *= imp_new
-    # krel_old *= imp_old
 
     # Initial residual (without div(q))
-    res_r = Theta_new - Theta_old
+    res_rich = Theta_new - Theta_old
 
     # Flux arrays
     qx = jnp.zeros((nz, nx + 1))
@@ -240,14 +235,13 @@ def volbal_coupled_drying(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt
     q_runoff = jnp.maximum(q_inf - q_infil, 0.0)
     
     # Apply surface flux BC 
-    res_r = res_r.at[-1, :].add(-q_infil/ dz * dt)
+    res_rich = res_rich.at[-1, :].add(-q_infil/ dz * dt)
     qz = qz.at[-1, :].set(-q_infil)
     
     # Update fluxes                  
     res_v, qz = vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, dt)
     res_h, qx = horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, Z, dt)
-    res_rich = res_r + res_v + res_h
-    print("richard residual", jnp.max(jnp.linalg.norm(res_rich, ord=jnp.inf)))
+    res_rich += res_v + res_h
     # print("richard residual", jnp.max(jnp.linalg.norm(res_rich, ord=jnp.inf)))
     # Average face fluxes
     qx_centered = 0.5 * (qx[:, :-1] + qx[:, 1:])
@@ -262,8 +256,8 @@ def volbal_coupled_drying(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt
     lambda_eff_new = petro.effective_thermalconductivity(theta_l_new, theta_i_new, Theta_s)
     
     # Temporal storage term 
-    storage_new = (C_eff_new * T_new - rho_i * H_f * theta_i_new)
-    storage_old = (C_eff_old * T_old - rho_i * H_f * theta_i_old)
+    storage_new = (C_eff_new * T_new - rho_i * H_f * theta_i_new)/dt
+    storage_old = (C_eff_old * T_old - rho_i * H_f * theta_i_old)/dt
 
     res_T = storage_new - storage_old
 
@@ -274,8 +268,7 @@ def volbal_coupled_drying(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt
     res_v_conv = vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde, dt)
     
     res_T += res_v_conv + res_h_conv + res_h_cond + res_v_cond 
-    res_T /= 1e9
-    print("heat residual", jnp.max(jnp.linalg.norm(res_T, ord=jnp.inf)))
+    res_T /= 1e6
     # Combine residuals
     res_total = jnp.concatenate([res_rich.ravel(), res_T.ravel()])
     return res_total, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_new, theta_i_new
@@ -346,7 +339,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     krel_new = jnp.clip(krel_new, eps64, 1.0)
     
     # Initial residual (without div(q))
-    res_r = Theta_new - Theta_old
+    res_rich = Theta_new - Theta_old
 
     # Flux arrays
     qx = jnp.zeros((nz, nx + 1))
@@ -372,13 +365,13 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     q_runoff = jnp.maximum(q_inf - q_infil, 0.0)
 
     # Apply surface flux BC 
-    res_r = res_r.at[-1, :].add(-q_infil/dz*dt)
+    res_rich = res_rich.at[-1, :].add(-q_infil/dz*dt)
     qz = qz.at[-1, :].set(-q_infil)
 
     # Update fluxes
     res_v, qz = vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, dt)
     res_h, qx = horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, Z, dt)
-    res_rich = res_r + res_v + res_h
+    res_rich += res_v + res_h
 
     # Average face fluxes
     qx_centered = 0.5 * (qx[:, :-1] + qx[:, 1:])
@@ -423,8 +416,8 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     lambda_eff_new = petro.effective_thermalconductivity(theta_l_new, theta_i_new, Theta_s)
 
     # Temporal storage term 
-    storage_new = (C_eff_new * T_new - rho_i * H_f * theta_i_new)
-    storage_old = (C_eff_old * T_old - rho_i * H_f * theta_i_old)
+    storage_new = (C_eff_new * T_new - rho_i * H_f * theta_i_new)/dt
+    storage_old = (C_eff_old * T_old - rho_i * H_f * theta_i_old)/dt
     res_T = (storage_new - storage_old)
 
     # Convective and conductive flux terms
@@ -434,14 +427,14 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     res_v_conv = vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde, dt)
 
     res_T += res_v_conv + res_h_conv + res_h_cond + res_v_cond
-
+    res_T/=1e6
     # combine residuals
     res_total = jnp.concatenate([res_rich.ravel(), res_T.ravel()])
     return res_total, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_new, theta_i_new
 
 def vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, dt):
     """
-    Update vertical fluxes and residuals.
+    Update vertical fluxes and# residuals.
     """
     # initialize res vector
     res = jnp.zeros_like(htot_new)
@@ -502,17 +495,33 @@ def horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde, dt):
     Update horizontal conductive heat fluxes and residuals.
     """
     res = jnp.zeros_like(T_new)
-
     # Calculate the average thermal conductivity between cells
     lambda_int_new = 2 * lambda_eff_new[:, 1:] * lambda_eff_new[:, :-1] / (lambda_eff_new[:, 1:] + lambda_eff_new[:, :-1])
-    diff_T_new = (T_new[:, 1:] - T_new[:, :-1])
+    diff_T_new = T_new[:, 1:] - T_new[:, :-1]
 
-    q = -lambda_int_new * diff_T_new / dx_tilde
+    q_new = -lambda_int_new * diff_T_new / dx
+    q = q_new 
 
     # Calculate convective term in residual
-    res = res.at[:, :-1].add(q * dt / dx )
-    res = res.at[:, 1:].add(-q * dt / dx )
+    res = res.at[:, :-1].add(q / dx)
+    res = res.at[:, 1:].add(-q / dx)
     return res
+
+    # """
+    # Update horizontal conductive heat fluxes and residuals.
+    # """
+    # res = jnp.zeros_like(T_new)
+
+    # # Calculate the average thermal conductivity between cells
+    # lambda_int_new = 2 * lambda_eff_new[:, 1:] * lambda_eff_new[:, :-1] / (lambda_eff_new[:, 1:] + lambda_eff_new[:, :-1])
+    # diff_T_new = (T_new[:, 1:] - T_new[:, :-1])
+
+    # q = -lambda_int_new * diff_T_new / dx_tilde
+
+    # # Calculate convective term in residual
+    # res = res.at[:, :-1].add(q / dx )
+    # res = res.at[:, 1:].add(-q / dx )
+    # return res
 
 def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde, dt):
     """
@@ -522,170 +531,138 @@ def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde,
     # Calculate the average thermal conductivity between cells
     lambda_int_new = 2 * lambda_eff_new[:-1, :] * lambda_eff_new[1:, :] / (lambda_eff_new[:-1, :] + lambda_eff_new[1:, :])
     diff_T_new = -(T_new[:-1, :] - T_new[1:, :])
-
-    q = -lambda_int_new * diff_T_new / dz
-    q_surf = -lambda_eff_new[-1,:]*(T_new[-1,:]-T_surface)/dz
-
+    # print("diff_T_new =", diff_T_new)
+    # print("lambda_int_new =", lambda_int_new)
+    # print("dz =", dz)
+    q_new = -lambda_int_new * diff_T_new / dz
+    q = q_new
+    q_surf = (lambda_eff_new[-1,:]*(T_surface-T_new[-1,:])/dz)
+    # print("q =", q)
+    # print(dt/dz)
     # Calculate convective term in residual
-    res = res.at[:-1, :].add(q * dt * dx_tilde / (dz * dx))
-    res = res.at[1:, :].add(-q * dt * dx_tilde / (dz * dx) )
-    res = res.at[-1,:].add(-q_surf * dt * dx_tilde / (dz * dx))
+    res = res.at[:-1, :].add(q / dz)
+    res = res.at[1:, :].add(-q / dz)
+    res = res.at[-1,:].add(-q_surf)
+    # print("res_vertical =", res)
     return res
 
-# def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde, dt):
-#     """
-#     Update vertical conductive heat fluxes and residuals.
-#     """
-#     res = jnp.zeros_like(T_new)
+    # """
+    # Update horizontal conductive heat fluxes and residuals.
+    # """
+    # res = jnp.zeros_like(T_new)
+    # # Calculate the average thermal conductivity between cells
+    # lambda_int_new = 2 * lambda_eff_new[:-1, :] * lambda_eff_new[1:, :] / (lambda_eff_new[:-1, :] + lambda_eff_new[1:, :])
+    # diff_T_new = -(T_new[:-1, :] - T_new[1:, :])
 
-#     # Calculate interface temperatures
-#     cond = qz[1:-1, :] < 0
-#     T_interface_new = jnp.where(cond, T_new[:-1, :], T_new[1:, :])
-#     T_interface_new = jnp.concatenate([T_interface_new,T_surface[None,:]],axis = 0)
-#     # Calculate cond. heat fluxes
-#     q_new = qz[:-1, :] * c_l * rho_l * T_interface_new 
-#     q_bottom = q_new 
+    # q = -lambda_int_new * diff_T_new / dz
+    # q_surf = -lambda_eff_new[-1,:]*(T_new[-1,:]-T_surface)/dz
 
-#     q_new = qz[1:, :] * c_l * rho_l * T_interface_new
-#     q_top = q_new 
+    # # Calculate convective term in residual
+    # res = res.at[:-1, :].add(q * dx_tilde / (dz * dx))
+    # res = res.at[1:, :].add(-q * dx_tilde / (dz * dx) )
+    # res = res.at[-1,:].add(-q_surf * dx_tilde / (dz * dx))
+    # return res
 
-#     # Calculate convective term in residual
-#     res = res.at[:, :].add(q_top * dt * dx_tilde / (dz * dx))
-#     res = res.at[:, :].add(-q_bottom * dt * dx_tilde / (dz * dx))
-#     return res
-
-# def horizontal_convflux_update(qx, c_l, T_new, rho_l, dz, dt):
-#     """
-#     Update vertical conductive heat fluxes and residuals.
-#     """
-#     res = jnp.zeros_like(T_new)
-#     # Calculate interface temperatures
-#     cond = qx[:, 1:-1] > 0
-#     T_interface_new = jnp.where(cond, T_new[:, :-1], T_new[:, 1:])
-#     T_interface_new_left = jnp.concatenate([T_new[:,0:1], T_interface_new], axis=1)
-#     T_interface_new_right = jnp.concatenate([T_interface_new, T_new[:,-1:]], axis=1)
-
-#     # Calculate cond. heat fluxes
-#     q_new = qx[:, :-1] * c_l * rho_l * T_interface_new_left
-#     q_left =  q_new 
-
-#     q_new = qx[:, 1:] * c_l * rho_l * T_interface_new_right
-#     q_right = q_new 
-
-#     # Calculate convective term in residual
-#     res = res.at[:, :].add(-q_left * dt / dz)
-#     res = res.at[:, :].add(q_right * dt / dz)
-#     return res
-
-# def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde, dt):
-#     """
-#     Update vertical conductive heat fluxes and residuals.
-#     """
-#     res = jnp.zeros_like(T_new)
-
-#     # Calculate interface temperatures
-#     # cond = qz[1:-1, :] < 0
-#     # T_interface_new = jnp.where(cond, T_new[:-1, :], T_new[1:, :])
-#     # T_interface_new = jnp.concatenate([T_interface_new, T_surface[None,:]],axis = 0)
-#     # # Calculate cond. heat fluxes
-#     # q_bottom = qz[:-1, :] * c_l * rho_l * T_interface_new 
-#     # q_top = qz[1:, :] * c_l * rho_l * T_interface_new
-#     # Upwind temperature at each vertical face
-#     qz_int = qz[1:-1, :]
-
-#     T_face_int = jnp.where(
-#         qz_int < 0,
-#         T_new[:-1, :],   # flow downward → take from upper cell
-#         T_new[1:, :]     # flow upward → take from lower cell
-#     )
-
-#     qT_int = qz_int * c_l * rho_l * T_face_int
-
-#     # Calculate convective term in residual
-#     # res = res.at[:, :].add(q_top * dt * dx_tilde / (dz * dx))
-#     # res = res.at[:, :].add(-q_bottom * dt * dx_tilde / (dz * dx))
-
-#     res = res.at[:, :].add( qT_int[1:, :] * dt * dx_tilde / (dz * dx))
-#     res = res.at[:, :].add(-qT_int[:-1, :] * dt * dx_tilde / (dz * dx))
-#     return res
 def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde, dt):
     """
-    Upwinded vertical convective heat flux (finite volume consistent).
-    
-    qz: (nz+1, nx)  → face fluxes
-    T_new: (nz, nx) → cell-centered temperatures
+    Update vertical conductive heat fluxes and residuals.
     """
-
     res = jnp.zeros_like(T_new)
 
-    # Interior faces 
-    qz_int = qz[1:-1, :]  # (nz-1, nx)
+    # Calculate interface temperatures
+    cond = qz[1:-1, :] < 0
+    T_interface_new = jnp.where(cond, T_new[:-1, :], T_new[1:, :])
+    T_interface_new = jnp.concatenate([T_interface_new,T_surface[None,:]],axis = 0)
+    # Calculate cond. heat fluxes
+    q_new = qz[:-1, :] * c_l * rho_l * T_interface_new 
+    q_bottom = q_new 
 
-    T_face_int = jnp.where(
-        qz_int > 0,
-        T_new[1:, :],#[:-1, :],  
-        T_new[:-1, :]     
-    )
+    q_new = qz[1:, :] * c_l * rho_l * T_interface_new
+    q_top = q_new
 
-    qT_int = qz_int * c_l * rho_l * T_face_int
-
-    # Divergence contribution
-    res = res.at[:-1, :].add(qT_int * dt * dx_tilde / (dz * dx))
-    res = res.at[1:, :].add(-qT_int * dt * dx_tilde / (dz * dx))
-
-
-    T_face_top = jnp.where(
-        qz[-1,:] > 0,
-        T_new[-1, :],   
-        T_surface
-    )
-
-    qT_top = qz[-1, :] * c_l * rho_l * T_face_top
-    res = res.at[-1, :].add(-qT_top * dt * dx_tilde / (dz * dx))
+    # Calculate convective term in residual
+    res = res.at[:, :].add(q_top / dz)
+    res = res.at[:, :].add(-q_bottom / dz)
     return res
+    # """
+    # Upwinded vertical convective heat flux (finite volume consistent).
+    
+    # qz: (nz+1, nx)  → face fluxes
+    # T_new: (nz, nx) → cell-centered temperatures
+    # """
 
-# def horizontal_convflux_update(qx, c_l, T_new, rho_l, dz, dt):
-#     """
-#     Update vertical conductive heat fluxes and residuals.
-#     """
-#     res = jnp.zeros_like(T_new)
-#     # Calculate interface temperatures
-#     cond = qx[:, 1:-1] > 0
-#     T_interface_new = jnp.where(cond, T_new[:, :-1], T_new[:, 1:])
-#     T_interface_new_left = jnp.concatenate([T_new[:,0:1], T_interface_new], axis=1)
-#     T_interface_new_right = jnp.concatenate([T_interface_new, T_new[:,-1:]], axis=1)
+    # res = jnp.zeros_like(T_new)
 
-#     # Calculate cond. heat fluxes
-#     q_left = qx[:, :-1] * c_l * rho_l * T_interface_new_left
-#     q_right = qx[:, 1:] * c_l * rho_l * T_interface_new_right
+    # # Interior faces 
+    # qz_int = qz[1:-1, :]  # (nz-1, nx)
 
-#     # Calculate convective term in residual
-#     res = res.at[:, :].add(-q_left * dt / dz)
-#     res = res.at[:, :].add(q_right * dt /  dz)
+    # T_face_int = jnp.where(
+    #     qz_int > 0,
+    #     T_new[1:, :],#[:-1, :],  
+    #     T_new[:-1, :]     
+    # )
+
+    # qT_int = qz_int * c_l * rho_l * T_face_int
+
+    # # Divergence contribution
+    # res = res.at[:-1, :].add(qT_int * dx_tilde / (dz * dx))
+    # res = res.at[1:, :].add(-qT_int * dx_tilde / (dz * dx))
+
+
+    # T_face_top = jnp.where(
+    #     qz[-1,:] > 0,
+    #     T_new[-1, :],   
+    #     T_surface
+    # )
+
+    # qT_top = qz[-1, :] * c_l * rho_l * T_face_top
+    # res = res.at[-1, :].add(-qT_top * dx_tilde / (dz * dx))
     # return res
+
 def horizontal_convflux_update(qx, c_l, T_new, rho_l, dz, dt):
     """
-    Upwinded horizontal convective heat flux (finite volume consistent).
-
-    qx: (nz, nx+1)  → face fluxes
-    T_new: (nz, nx) → cell-centered temperatures
+    Update vertical conductive heat fluxes and residuals.
     """
-
     res = jnp.zeros_like(T_new)
+    # Calculate interface temperatures
+    cond = qx[:, 1:-1] > 0
+    T_interface_new = jnp.where(cond, T_new[:, :-1], T_new[:, 1:])
+    T_interface_new_left = jnp.concatenate([T_new[:,0:1], T_interface_new], axis=1)
+    T_interface_new_right = jnp.concatenate([T_interface_new, T_new[:,-1:]], axis=1)
 
-    # Interior faces
-    qx_int = qx[:, 1:-1]  # (nz, nx-1)
+    # Calculate cond. heat fluxes
+    q_new = qx[:, :-1] * c_l * rho_l * T_interface_new_left
+    q_left = q_new
 
-    T_face_int = jnp.where(
-        qx_int > 0,
-        T_new[:, :-1],   # flow left → right → take from left cell
-        T_new[:, 1:]     # flow right → left → take from right cell
-    )
+    q_new = qx[:, 1:] * c_l * rho_l * T_interface_new_right
+    q_right = q_new
 
-    qT_int = qx_int * c_l * rho_l * T_face_int
-
-    # Divergence contribution
-    res = res.at[:, :-1].add(-qT_int * dt / dz)
-    res = res.at[:, 1:].add( qT_int * dt / dz)
-
+    # Calculate convective term in residual
+    res = res.at[:, :].add(-q_left / dz)
+    res = res.at[:, :].add(q_right / dz)
     return res
+    # """
+    # Upwinded horizontal convective heat flux (finite volume consistent).
+
+    # qx: (nz, nx+1)  → face fluxes
+    # T_new: (nz, nx) → cell-centered temperatures
+    # """
+
+    # res = jnp.zeros_like(T_new)
+
+    # # Interior faces
+    # qx_int = qx[:, 1:-1]  # (nz, nx-1)
+
+    # T_face_int = jnp.where(
+    #     qx_int > 0,
+    #     T_new[:, :-1],   # flow left → right → take from left cell
+    #     T_new[:, 1:]     # flow right → left → take from right cell
+    # )
+
+    # qT_int = qx_int * c_l * rho_l * T_face_int
+
+    # # Divergence contribution
+    # res = res.at[:, :-1].add(-qT_int / dz)
+    # res = res.at[:, 1:].add( qT_int / dz)
+
+    # return res

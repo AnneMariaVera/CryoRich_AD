@@ -386,10 +386,10 @@ class Geom():
             while repeat:
                 dt = self.dt
                 # Call coupled Newton-Raphson
-                y_new, iter_count, normres = self.newtonRaphson_coupled(y_new, y_old,t, dt, residual_func_coupled, jacobian_func, self.restol, self.max_iter)
+                y_trial, iter_count, normres = self.newtonRaphson_coupled(y_old, y_old,t, dt, residual_func_coupled, jacobian_func, self.restol, self.max_iter)
                 # Extract updated htot and T
-                htot_new = jnp.reshape(y_new[:np], (self.nz, self.nx))
-                T_new    = jnp.reshape(y_new[np:], (self.nz, self.nx))
+                htot_new = jnp.reshape(y_trial[:np], (self.nz, self.nx))
+                T_new    = jnp.reshape(y_trial[np:], (self.nz, self.nx))
 
                 # Adaptive time step control
                 if (iter_count >= self.max_iter and normres>self.restol) or jnp.isnan(normres) or jnp.isinf(normres):
@@ -401,18 +401,23 @@ class Geom():
                     repeat = True
                     cons_success = 0
                 elif iter_count <= self.min_iter and cons_success >= 2:
-                    self.dt = min(self.dt * 2, self.maxdt)
+                    self.dt = min(self.dt * 1.2, self.maxdt)
                     # print(f"Few iterations. Doubling dt to {self.dt}")
                     repeat = False
                     cons_success = 0
-                else:
+                elif iter_count <= self.min_iter:
                     repeat = False
                     cons_success += 1
+                else:
+                    repeat = False
+                    cons_success =0
                 
             
             # Update variables for next time step
+            y_new = y_trial.copy()
+            htot_new = jnp.reshape(y_new[:np], (self.nz, self.nx))
+            T_new    = jnp.reshape(y_new[np:], (self.nz, self.nx))
             y_old = y_new.copy()
-
             t += dt
 
             # Store outputs at save times
@@ -445,21 +450,13 @@ class Geom():
         """
         Newton-Raphson solver for coupled [htot, T] using explicit residual inputs.
         """
-        y_new, normres_0,res = self.body_fun_coupled(y0, y_old, t, dt, residual_func, jacobian_func)
-        norm_h = jnp.linalg.norm(res[:len(res)//2], ord=jnp.inf)
-        norm_T = jnp.linalg.norm(res[len(res)//2:], ord=jnp.inf)
-        norm_h0 = norm_h
-        norm_T0 = norm_T
-        normres_0= max(norm_h / norm_h0, norm_T / norm_T0)
-        iter_count = 1
-        normres = normres_0
+        y_new = y0
+        normres = 1
+        iter_count = 0
 
         #jax.lax.while_loop(self.cond_fun, self.body_fun_coupled, init_val)
         while (normres > restol) and (iter_count < max_iter):
-            y_new, normres, res = self.body_fun_coupled(y_new, y_old, t, dt, residual_func, jacobian_func)
-            norm_h = jnp.linalg.norm(res[:len(res)//2], ord=jnp.inf)
-            norm_T = jnp.linalg.norm(res[len(res)//2:], ord=jnp.inf)
-            normres= max(norm_h / norm_h0, norm_T / norm_T0)
+            y_new, normres = self.body_fun_coupled(y_new, y_old, t, dt, residual_func, jacobian_func)
             iter_count += 1
 
         return y_new, iter_count, normres
@@ -476,50 +473,52 @@ class Geom():
         J_csr = jax.experimental.sparse.BCSR.from_bcoo(J)
         dy = jax.experimental.sparse.linalg.spsolve(J_csr.data,J_csr.indices,J_csr.indptr,-res)
 
-        # --- step limiting (your existing limiter) ---
-        dh = dy[:len(dy)//2]
-        dT = dy[len(dy)//2:]
-        # print("max dh:", jnp.max(jnp.abs(dh)), "max dT:", jnp.max(jnp.abs(dT)))
+        # # --- step limiting (your existing limiter) ---
+        # dh = dy[:len(dy)//2]
+        # dT = dy[len(dy)//2:]
+        # # print("max dh:", jnp.max(jnp.abs(dh)), "max dT:", jnp.max(jnp.abs(dT)))
         
-        fac_h = jnp.where(jnp.max(jnp.abs(dh)) > maxdh,
-                        maxdh / jnp.max(jnp.abs(dh)), 1.0)
+        # fac_h = jnp.where(jnp.max(jnp.abs(dh)) > maxdh,
+        #                 maxdh / jnp.max(jnp.abs(dh)), 1.0)
 
-        fac_T = jnp.where(jnp.max(jnp.abs(dT)) > maxdT,
-                        maxdT / jnp.max(jnp.abs(dT)), 1.0)
+        # fac_T = jnp.where(jnp.max(jnp.abs(dT)) > maxdT,
+        #                 maxdT / jnp.max(jnp.abs(dT)), 1.0)
 
-        fac = jnp.minimum(fac_h, fac_T)
+        # fac = jnp.minimum(fac_h, fac_T)
 
-        dy = fac * dy
+        # dy = fac * dy
 
-        # --- globally convergent Newton (line search) ---
-        delta = 1.0
-        res_norm = jnp.linalg.norm(res, ord=jnp.inf)
+        # # --- globally convergent Newton (line search) ---
+        # delta = 1.0
+        # res_norm = jnp.linalg.norm(res, ord=jnp.inf)
 
-        while True:
+        # while True:
 
-            y_trial = y_new + delta * dy
+        #     y_trial = y_new + delta * dy
 
-            res_trial = residual_func(y_trial, y_old, 
-                self.Theta_s, self.Theta_r, self.alpha, self.N, self.Ksat, 
-                self.rho_i, self.H_f, self.rho_l, self.c_l,  
-                self.q_inf_interp(t)*jnp.ones((self.nx,)), self.T_surface_interp(t)*jnp.ones((self.nx,)), 
-                self.X, self.Z, dt, self.CN, self.nz, self.nx
-            )
+        #     res_trial = residual_func(y_trial, y_old, 
+        #         self.Theta_s, self.Theta_r, self.alpha, self.N, self.Ksat, 
+        #         self.rho_i, self.H_f, self.rho_l, self.c_l,  
+        #         self.q_inf_interp(t)*jnp.ones((self.nx,)), self.T_surface_interp(t)*jnp.ones((self.nx,)), 
+        #         self.X, self.Z, dt, self.CN, self.nz, self.nx
+        #     )
 
-            trial_norm = jnp.linalg.norm(res_trial, ord=jnp.inf)
+        #     trial_norm = jnp.linalg.norm(res_trial, ord=jnp.inf)
 
-            if trial_norm < res_norm:
-                break
+        #     if trial_norm < res_norm:
+        #         break
 
-            if delta < 1e-4:
-                break
+        #     if delta < 1e-4:
+        #         break
 
-            delta *= 0.5
+        #     delta *= 0.5
 
-        y_new = y_new + delta * dy
-        normres = trial_norm
+        # y_new = y_new + delta * dy
+        # normres = trial_norm
+        y_new = y_new + dy
+        normres = jnp.linalg.norm(res, ord=jnp.inf)
 
-        return (y_new, normres, res)
+        return (y_new, normres)
 
     def simulate_cap_bundle(self):
         """
@@ -546,11 +545,11 @@ class Geom():
         # Transform T to y = arcsinh(T/b) to improve convergence for large T variations (e.g. freezing/thawing)
         def T_of_y(y, b=1e-1):
             T = b * jnp.sinh(y)
-            return T
+            return y
 
         def y_of_T(T, b=1e-1):
             y = jnp.arcsinh(T / b)
-            return y
+            return T
 
         # Lists for saving simulation outputs. Initial conditions are included as first entry.
         h_total, h_c_total, theta_l_total, theta_i_total = [htot], [h_c], [theta_l], [theta_i]
@@ -616,33 +615,32 @@ class Geom():
         while t < self.t_end:
 
             repeat = True
-            dt_update = self.dt
 
             # Adaptive time stepping loop
             while repeat:
 
                 # predictor step for T using previous two time steps (for better convergence of coupled system)
-                y_0 = y_old
+                dt = self.dt
                 # Call coupled Newton-Raphson
-                y_new, iter_count, normres = self.newtonRaphson_cap_bundle(y_0, y_old, t, dt_update, residual_func_cap_bundle, jacobian_func, self.restol, self.max_iter)
+                y_trial, iter_count, normres = self.newtonRaphson_cap_bundle(y_old, y_old, t, dt, residual_func_cap_bundle, jacobian_func, self.restol, self.max_iter)
 
                 # Adaptive time step control
                 if (iter_count >= self.max_iter and normres>self.restol) or jnp.isnan(normres) or jnp.isinf(normres):
-                    dt_update /= 2
-                    if dt_update < 1e-6:
+                    self.dt /= 2
+                    if self.dt < 1e-6:
                         print("Time step too small. Simulation diverging. Returning saved variables.")
                         return h_total, h_c_total, theta_l_total,theta_i_total, T_total, q_runoff_array, qx_array,qz_array,qx_centered_array,qz_centered_array, time_array, iter_total, normres_total
-                    print(f"Max iterations reached with norm {normres}. Halving dt to {dt_update}")
+                    print(f"Max iterations reached with norm {normres}. Halving dt to {self.dt}")
                     repeat = True
                     cons_success = 0
                     
-                elif iter_count <= self.min_iter and cons_success >= 3:
-                    dt_update = min(dt_update * 1.2, self.maxdt)
+                elif iter_count <= self.min_iter and cons_success >= 2:
+                    self.dt = min(self.dt * 1.2, self.maxdt)
                     # print(f"Few iterations. Doubling dt to {self.dt}")
                     repeat = False
                     cons_success = 0
 
-                elif iter_count <= self.min_iter and cons_success < 3:
+                elif iter_count <= self.min_iter and cons_success < 2:
                     repeat = False
                     cons_success += 1
 
@@ -651,16 +649,13 @@ class Geom():
                     repeat = False
             
             # Extract updated htot and T
+            y_new = y_trial
+            y_old = y_new.copy()
             htot_new = jnp.reshape(y_new[:np], (self.nz, self.nx))
             yT_new = jnp.reshape(y_new[np:], (self.nz, self.nx))
             T_new  = T_of_y(yT_new)
+            t += dt
 
-            # Update variables for next time step
-            # y_older = y_old.copy()
-            y_old = y_new.copy()
-            t += dt_update
-            # dt_old = self.dt
-            self.dt = dt_update
             # Store outputs at save times
             if t >= t_next_save:
                 h_c = jnp.maximum(self.Z - htot_new, 0.0)
@@ -749,32 +744,34 @@ class Geom():
         # dy = fac * dy
 
         # line search for global convergence as implemented in DuMux: https://dumux.org/docs/doxygen/master/group___newton.html
-        alpha = 1.0
-        res_norm = jnp.linalg.norm(res, ord=2)
+        # alpha = 1.0
+        # res_norm = jnp.linalg.norm(res, ord=2)
 
-        while True:
+        # while True:
 
-            y_trial = y_new + alpha * dy
+        #     y_trial = y_new + alpha * dy
 
-            res_trial = residual_func(
-                y_trial, y_old, dt, self.soil, self.soil_type,
-                self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat,
-                self.rho_i, self.H_f, self.rho_l, self.c_l,
-                self.q_inf_interp(t)*jnp.ones((self.nx,)),
-                self.T_surface_interp(t)*jnp.ones((self.nx,)),
-                self.X, self.Z,  self.nz, self.nx, self.dx, self.dx_tilde, self.dz
-            )
+        #     res_trial = residual_func(
+        #         y_trial, y_old, dt, self.soil, self.soil_type,
+        #         self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat,
+        #         self.rho_i, self.H_f, self.rho_l, self.c_l,
+        #         self.q_inf_interp(t)*jnp.ones((self.nx,)),
+        #         self.T_surface_interp(t)*jnp.ones((self.nx,)),
+        #         self.X, self.Z,  self.nz, self.nx, self.dx, self.dx_tilde, self.dz
+        #     )
 
-            trial_norm = jnp.linalg.norm(res_trial, ord=2)
+        #     trial_norm = jnp.linalg.norm(res_trial, ord=2)
 
-            if trial_norm <= res_norm:
-                break
+        #     if trial_norm <= res_norm:
+        #         break
 
-            alpha *= 0.5
+        #     alpha *= 0.5
             
-            # As in DuMux accept alpha even if it leads to an increase in residual.
-            if alpha < 1e-6:
-                return y_trial, trial_norm
+        #     # As in DuMux accept alpha even if it leads to an increase in residual.
+        #     if alpha < 1e-6:
+        #         return y_trial, trial_norm
+        y_trial = y_new +dy
+        trial_norm = jnp.linalg.norm(res, ord=jnp.inf)
                 
         # normres = res_norm
         return y_trial, trial_norm

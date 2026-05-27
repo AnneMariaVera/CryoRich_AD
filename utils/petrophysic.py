@@ -23,7 +23,7 @@ def relperm(S_e,N):
     """
     Calculate relative permeability based on effective saturation and van Genuchten.
     """
-    S_e_safe = jnp.clip(S_e, 1e-7, 1.0-1e-7)  # Avoid division by zero
+    S_e_safe = jnp.clip(S_e, 0.0, 1.0-1e-7)  # Avoid division by zero
     k_rel = jnp.sqrt(S_e_safe)*(1-(1-S_e_safe**(N/(N-1)))**((N-1)/N))**2
     return k_rel
 
@@ -38,12 +38,12 @@ def watercontent(h_c, alpha, N, theta_s, theta_r):
     return theta    
 
 #@jax.jit
-def impedance_factor( theta_i, Omega=50.0):
+def impedance_factor( theta_i, Omega=50.0,k_min=1e-6):
     """
     Calculate impedance factor based on minimum permeability, volumetric frozen water content,
     and exponent omega.
     """
-    return jnp.power(10, -Omega*theta_i)
+    return jnp.maximum(jnp.power(10, -Omega*theta_i), k_min)
 
 @jax.jit
 def phase_separation(theta, theta_r, T, T_freeze=0, omega=1.0):
