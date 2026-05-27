@@ -262,10 +262,10 @@ def volbal_coupled_drying(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt
     res_T = storage_new - storage_old
 
     # Convective and conductive flux terms
-    res_h_cond = horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde, dt)
-    res_v_cond = vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde, dt)
-    res_h_conv = horizontal_convflux_update(qx, c_l, T_new, rho_l, dz, dt)
-    res_v_conv = vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde, dt)
+    res_h_cond = horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde)
+    res_v_cond = vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde)
+    res_h_conv = horizontal_convflux_update(qx, c_l, T_new, rho_l, dz)
+    res_v_conv = vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde)
     
     res_T += res_v_conv + res_h_conv + res_h_cond + res_v_cond 
     res_T /= 1e6
@@ -421,10 +421,10 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     res_T = (storage_new - storage_old)
 
     # Convective and conductive flux terms
-    res_h_cond = horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde, dt)
-    res_v_cond = vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde, dt)
-    res_h_conv = horizontal_convflux_update(qx, c_l, T_new, rho_l, dz, dt)
-    res_v_conv = vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde, dt)
+    res_h_cond = horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde)
+    res_v_cond = vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde)
+    res_h_conv = horizontal_convflux_update(qx, c_l, T_new, rho_l, dz)
+    res_v_conv = vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde)
 
     res_T += res_v_conv + res_h_conv + res_h_cond + res_v_cond
     res_T/=1e6
@@ -490,7 +490,7 @@ def horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, 
     res = res.at[:, -1].add(q_r * dt / dx)
     return res, qx
 
-def horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde, dt):
+def horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde):
     """
     Update horizontal conductive heat fluxes and residuals.
     """
@@ -499,7 +499,7 @@ def horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde, dt):
     lambda_int_new = 2 * lambda_eff_new[:, 1:] * lambda_eff_new[:, :-1] / (lambda_eff_new[:, 1:] + lambda_eff_new[:, :-1])
     diff_T_new = T_new[:, 1:] - T_new[:, :-1]
 
-    q_new = -lambda_int_new * diff_T_new / dx
+    q_new = -lambda_int_new * diff_T_new / dx_tilde
     q = q_new 
 
     # Calculate convective term in residual
@@ -523,7 +523,7 @@ def horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde, dt):
     # res = res.at[:, 1:].add(-q / dx )
     # return res
 
-def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde, dt):
+def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde):
     """
     Update horizontal conductive heat fluxes and residuals.
     """
@@ -563,7 +563,7 @@ def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde,
     # res = res.at[-1,:].add(-q_surf * dx_tilde / (dz * dx))
     # return res
 
-def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde, dt):
+def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde):
     """
     Update vertical conductive heat fluxes and residuals.
     """
@@ -619,7 +619,7 @@ def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde,
     # res = res.at[-1, :].add(-qT_top * dx_tilde / (dz * dx))
     # return res
 
-def horizontal_convflux_update(qx, c_l, T_new, rho_l, dz, dt):
+def horizontal_convflux_update(qx, c_l, T_new, rho_l, dz):
     """
     Update vertical conductive heat fluxes and residuals.
     """
