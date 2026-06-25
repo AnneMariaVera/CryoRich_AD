@@ -79,7 +79,7 @@ def f_q(R,ri):
 
 def h_from_S(S, alpha, N):
     '''
-    capillary head from effective saturation
+    capillary head from effective saturation after van Genuchten
     -----------------------
     S        : effective saturation
     alpha    : van-Genuchten parameter alpha
@@ -92,7 +92,7 @@ def h_from_S(S, alpha, N):
 
 def S_from_h(h_c, alpha, N):
     '''
-    effective saturation from capillary head
+    effective saturation from capillary head after van Genuchten
     -----------------------
     h_c      : capillary head [m]
     alpha    : van-Genuchten parameter alpha

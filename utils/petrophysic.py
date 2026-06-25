@@ -84,24 +84,40 @@ def evap_limit(Se, Se_up=0.5, Se_low=0.1):
 def effective_thermalconductivity(theta_l, theta_i, theta_s, 
                      lambda_s=2.0, lambda_l=0.6, lambda_i=2.2, lambda_a=0.025):
     """
-    Geometric mean for thermal conductivity (W/m/K).
-    lambda_s : solid matrix (e.g. mineral)
-    lambda_w : liquid water
-    lambda_i : ice
+    Geometric mean for thermal conductivity (W/m/K) based on 
+    volumetric fractions:
+    theta_l : liquid water content
+    theta_i : ice content
+    theta_s : saturated water content (= porosity)
+
+    thermal conductivities:
+    lambda_s : solid matrix (e.g. mineral) [W/m/K]
+    lambda_w : liquid water [W/m/K]
+    lambda_i : ice [W/m/K]
     """
-    return jnp.power(lambda_s, 1-theta_s) * jnp.power(lambda_l, theta_l) * jnp.power(lambda_i, theta_i)* jnp.power(lambda_a, 1 - (1-theta_s + theta_l + theta_i))
+    theta_a = theta_s-theta_i-theta_l
+    return jnp.power(lambda_s, 1-theta_s) * jnp.power(lambda_l, theta_l) * jnp.power(lambda_i, theta_i)* jnp.power(lambda_a, theta_a)
 
 
 @jax.jit
-def effective_heatcapacity(theta_l, theta_i, theta_s, rho_l=1000,rho_i=917,rho_s=2650,rho_a=1200, 
+def effective_heatcapacity(theta_l, theta_i, theta_s, rho_l=998,rho_i=917,rho_s=2650,rho_a=1.1, 
                      c_s=800, c_l=4180, c_i=2100, c_a=1000):
     """
-    Volumetric heat capacity (J/m3/K).
-    c_s : solid matrix (e.g. mineral)
-    c_l : liquid water
-    c_i : ice
+    Effective volumetric heat capacity, mixing model based on 
+    c_s : solid matrix [J/kg/K]
+    c_l : liquid water [J/kg/K]
+    c_i : ice [J/kg/K]
+    c_a : air [J/kg/K]
+
+    rho_s : solid matrix [kg/m³]
+    rho_l : liquid water [kg/m³]
+    rho_i : ice [kg/m³]
+    rho_a : air [kg/m³]
+
+    Unit: c_eff [J/m³/K]=[kg/s²/m/K]
     """
-    return c_s * rho_s * (1 - theta_s) + c_l * rho_l * theta_l + c_i * rho_i * theta_i + c_a * rho_a * (theta_s - theta_l - theta_i)
+    theta_a = theta_s-theta_i-theta_l
+    return c_s * rho_s * (1 - theta_s) + c_l * rho_l * theta_l + c_i * rho_i * theta_i + c_a * rho_a * theta_a
 
 # #@partial(jax.jit, static_argnames=('nbins',))
 # def capillary_distribution_scalar(alpha,N,theta_r,theta_s,sigma_w = 7.27e-2, rho_w = 1000, g = 9.81, nbins = 300):

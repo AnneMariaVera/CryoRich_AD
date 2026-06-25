@@ -31,7 +31,8 @@ def interpolate_parameter_cap(Se, T, soil_type, filename, method='monotonic', ex
             soil_type = pkl.load(f)
         print("Loaded interpolated soil type from file: ", filename)
         return soil_type
-
+    idx_safe = jnp.logical_and(Se>1e-7, Se<1-1e-7)
+    Se = Se[idx_safe]
     for soil_id, soil_props in soil_type.items():
         # extract soil properties
         alpha = soil_props["alpha"]
@@ -60,12 +61,13 @@ def interpolate_parameter_cap(Se, T, soil_type, filename, method='monotonic', ex
         #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
         # hc = jnp.append(hc,0)
         # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
+        # print("theta_l shape: ", theta_l.shape)
+        # print("theta_i shape: ", theta_i.shape)
         # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
         # theta_i = jnp.concatenate([theta_i,jnp.ones((theta_i.shape[0],1))*Theta_s],axis=1)
 
         # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
         # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
-        # theta_i = theta_i.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_i[:,-2], Theta_s))
         
         idx_sort = jnp.argsort(hc)
 
@@ -96,7 +98,8 @@ def interpolate_parameter_drying(Se, T, soil_type, filename, method='monotonic',
             soil_type = pkl.load(f)
         print("Loaded interpolated soil type from file: ", filename)
         return soil_type
-
+    idx_safe = jnp.logical_and(Se>1e-7, Se<1-1e-7)
+    Se = Se[idx_safe]
     for soil_id, soil_props in soil_type.items():
         # extract soil properties
         alpha = soil_props["alpha"]
@@ -127,12 +130,12 @@ def interpolate_parameter_drying(Se, T, soil_type, filename, method='monotonic',
         theta_i = jnp.array(theta_i_ar)
 
         #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
-        hc = jnp.append(hc,0)
-        k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
-        theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
+        # hc = jnp.append(hc,0)
+        # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
+        # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
 
-        k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
-        theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
+        # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
+        # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
 
         # interpolate k_rel to the grid
         k_rel_interp = ipx.Interpolator2D(jnp.sort(hc), T, k_rel[:,::-1].T, method=method,extrap=extrapolate)
@@ -158,6 +161,9 @@ def interpolate_parameter_drying_omega10(Se, T, soil_type, filename, method='mon
             soil_type = pkl.load(f)
         print("Loaded interpolated soil type from file: ", filename)
         return soil_type
+    
+    idx_safe = jnp.logical_and(Se>1e-7, Se<1-1e-7)
+    Se = Se[idx_safe]
 
     for soil_id, soil_props in soil_type.items():
         # extract soil properties
@@ -190,13 +196,13 @@ def interpolate_parameter_drying_omega10(Se, T, soil_type, filename, method='mon
         theta_l = jnp.array(theta_l_ar)
         theta_i = jnp.array(theta_i_ar)
 
-        #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
-        hc = jnp.append(hc,0)
-        k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
-        theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
+        # #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
+        # hc = jnp.append(hc,0)
+        # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
+        # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
 
-        k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
-        theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
+        # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
+        # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
 
         # interpolate k_rel to the grid
         k_rel_interp = ipx.Interpolator2D(jnp.sort(hc), T, k_rel[:,::-1].T, method=method,extrap=extrapolate)
@@ -222,6 +228,9 @@ def interpolate_parameter_permaFoam_50(Se, T, soil_type, filename, method='monot
             soil_type = pkl.load(f)
         print("Loaded interpolated soil type from file: ", filename)
         return soil_type
+    
+    idx_safe = jnp.logical_and(Se>1e-7, Se<1-1e-7)
+    Se = Se[idx_safe]
 
     for soil_id, soil_props in soil_type.items():
         # extract soil properties
@@ -256,11 +265,11 @@ def interpolate_parameter_permaFoam_50(Se, T, soil_type, filename, method='monot
 
 
         #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
-        hc = jnp.append(hc,0)
-        k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
-        theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
-        k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
-        theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
+        # hc = jnp.append(hc,0)
+        # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
+        # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
+        # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
+        # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
 
         # interpolate k_rel to the grid
         k_rel_interp = ipx.Interpolator2D(jnp.sort(hc), T, k_rel[:,::-1].T, method=method,extrap=extrapolate)
@@ -287,6 +296,9 @@ def interpolate_parameter_permaFoam_10(Se, T, soil_type, filename, method='monot
             soil_type = pkl.load(f)
         print("Loaded interpolated soil type from file: ", filename)
         return soil_type
+    
+    idx_safe = jnp.logical_and(Se>1e-7, Se<1-1e-7)
+    Se = Se[idx_safe]
 
     for soil_id, soil_props in soil_type.items():
         # extract soil properties
@@ -321,11 +333,11 @@ def interpolate_parameter_permaFoam_10(Se, T, soil_type, filename, method='monot
 
 
         #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
-        hc = jnp.append(hc,0)
-        k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
-        theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
-        k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
-        theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
+        # hc = jnp.append(hc,0)
+        # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
+        # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
+        # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
+        # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
 
         # interpolate k_rel to the grid
         k_rel_interp = ipx.Interpolator2D(jnp.sort(hc), T, k_rel[:,::-1].T, method=method,extrap=extrapolate)

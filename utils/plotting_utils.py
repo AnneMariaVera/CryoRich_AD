@@ -7,7 +7,8 @@ import matplotlib.animation as animation
 from scipy.interpolate import griddata
 import cmocean
 import matplotlib.dates as mdates
-from datetime import datetime, timedelta
+import matplotlib as mpl
+from datetime import timedelta
 
 
 # Plotting settings
@@ -154,9 +155,176 @@ def plot_lineProfile(geom, cellValue1, cellValue2, x_position, title=" ", xlabel
     ax.title.set_text(f"Line Profile at x = {x_position*geom.dx} m")
     return fig, ax
 
-def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap="Blues",
+def plot_angle_q(db, parametrization):
+
+    times_days = np.array(db["time_array"]) / 24 / 60 / 60
+
+    # Colormap + normalization
+    cmap = cmocean.cm.thermal_r
+    norm = mpl.colors.Normalize(vmin=times_days.min(),
+                                vmax=times_days.max())
+
+    # Colors for each curve
+    colors = cmap(norm(times_days))
+
+    fig, ax = plt.subplots(figsize=(8*cm,10.5*cm))
+
+    for i in range(1,len(db["time_array"]),2):
+        qx = db["qx_centered_array"][i][:, -1]
+        qz = db["qz_centered_array"][i][:, -1]
+
+        q_norm = np.sqrt(qx**2 + qz**2)
+
+        cos_theta = -qz / np.clip(q_norm, 1e-12, None)
+        angle = np.arccos(np.clip(cos_theta, -1.0, 1.0))
+        angles_deg = np.degrees(angle)
+        # q_vector = np.concatenate([db["qx_array"][i][:,-1], db["qz_array"][i][:,-1]]).T
+        # angle = angle_between(q_vector, z_vector)
+        # angles.append(angle)
+        ax.plot(angles_deg,db["Z"][:,-1],".",linewidth=1.5,label=f"t={db['time_array'][i]/24/60/60:.2f} days", color=colors[i])
+    
+    ax.axhline(-1.25, color='k', linestyle='--', linewidth=1.5)
+    ax.axhline(-1.5, color='k', linestyle='--', linewidth=1.5)
+    ax.spines[['top', 'right']].set_visible(False)
+    # Create colorbar
+    sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])  # required for older matplotlib versions
+
+    cbar = fig.colorbar(sm, ax=ax)
+    cbar.set_label("Time [days]")
+    # Combine legends from both axes
+    ax.spines['left'].set_position(('outward', 10))
+    #ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+    ax.set_xlim(-5, 185)
+    plt.xlabel(r"angle between $\vec{q}$ and vertical [°]")
+    plt.ylabel("Depth [m]")
+    fig.tight_layout()
+    plt.title(f"{parametrization}: x={db['X'][0,-1]+0.025/2:.2f} m")
+    return fig, ax
+
+
+def plot_qx_out(db, parametrization):
+    fig, ax = plt.subplots(figsize=(8*cm,10.5*cm))
+    # Time values in days
+    times_days = np.array(db["time_array"]) / 24 / 60 / 60
+
+    # Colormap + normalization
+    cmap = cmocean.cm.thermal_r
+    norm = mpl.colors.Normalize(vmin=times_days.min(),
+                                vmax=times_days.max())
+
+    # Colors for each curve
+    colors = cmap(norm(times_days))
+
+    for i in range(0,len(db["time_array"]),2):
+        ax.semilogx(db["qx_array"][i][:,-1],db["Z"][:,-1],".",linewidth=1.5,label=f"t={db['time_array'][i]/24/60/60:.2f} days", color=colors[i])
+    ax.axhline(-1.25, color='k', linestyle='--', linewidth=1.5)
+    ax.axhline(-1.5, color='k', linestyle='--', linewidth=1.5)
+    ax.spines[['top', 'right']].set_visible(False)
+    # Create colorbar
+    sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])  # required for older matplotlib versions
+
+    cbar = fig.colorbar(sm, ax=ax)
+    cbar.set_label("Time [days]")
+    # Combine legends from both axes
+    ax.spines['left'].set_position(('outward', 10))
+    ax.set_xlim(1e-11,1e-4)
+    #ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+
+    plt.xlabel(r"$q_x$ [m/s]")
+    plt.ylabel("Depth [m]")
+    fig.tight_layout()
+    plt.title(f"{parametrization}: x={db['X'][0,-1]+0.025/2:.2f} m")
+    return fig, ax
+
+def plot_interflow(db, parametrization, ylim=None):
+    fig, ax = plt.subplots(figsize=(9*cm,9.5*cm))
+    q_top = []
+    q_bottom = []
+    q_top_rel = []
+    q_bottom_rel = []
+    q_surf = []
+    q_surf_rel = []
+
+    dz = abs(db["Z"][0,1] - db["Z"][0,0])
+    dx = abs(db["X"][1,0] - db["X"][0,0])
+    dx_tilde = np.sqrt(dx**2 + dz**2)
+
+    idx_top = db["Z"][:,-1] >= -1.5
+    idx_bottom = db["Z"][:,-1] < -1.5
+
+    times_days = np.array(db["time_array"]) / 24 / 60 / 60
+
+    for i in range(5,len(db["time_array"])):
+        q_surf.append(np.sum(abs(db["q_runoff"][i]))*dx_tilde)
+        q_top.append(np.sum(abs(db["qx_array"][i][:,-1][idx_top])*dz))
+        q_bottom.append(np.sum(abs(db["qx_array"][i][:,-1][idx_bottom])*dz))
+
+        q_tot = q_top[-1]+q_bottom[-1]
+        q_top_rel.append(q_top[-1]/q_tot)
+        q_bottom_rel.append(q_bottom[-1]/q_tot) 
+    ax.plot(times_days[5::], q_surf, "-", linewidth = 2, label=r"$q_{surface}$", color=green)
+    ax.plot(times_days[5::], q_bottom, ":", linewidth = 2, label=r"$q_{bottom}$", color=persian_red)
+    ax.plot(times_days[5::], q_top, "--", linewidth = 2, label=r"$q_{top}$", color=carolina_blue)
+    ax.spines[['top', 'right']].set_visible(False)
+
+    # Combine legends from both axes
+    ax.spines['left'].set_position(('outward', 10))
+    #ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+    ax.set_ylim(ylim)
+    plt.xlabel(r"time [days]")
+    plt.ylabel(r"$q_i / q_{tot}$ [-]")
+    fig.legend(loc="center", facecolor='none', edgecolor='none')
+    if parametrization == "drying":
+        plt.title(f"drying")
+    if parametrization == "permaFoam_omega10":
+        plt.title(r"impedance, $\Omega=10$")
+    if parametrization == "permaFoam_omega50":
+        plt.title(r"impedance, $\Omega=50$")
+    if parametrization == "cap":
+        plt.title(f"capillary bundle")
+    if parametrization == "drying_omega10":
+        plt.title(r"drying, $\Omega=10$")
+    fig.tight_layout()
+    return fig, ax
+
+def plot_streamContours(db, index, parametrization):
+    X = db["X_plot"]
+    Z = db["Z_plot"]
+
+    qx = db["qx_array"][index]
+    qz = db["qz_array"][index]
+    qz = np.append((qz,np.zeros((qz.shape[0],1))), axis=1)
+    qx = np.append((np.zeros((1,qx.shape[1]),qx)), axis=0)
+    # qz -= 0.1*qx
+
+    chix_integrate_cum = -np.cumsum(qz, axis=1)*abs(Z[1,0]-Z[0,0])
+    chiz_integrate_cum = np.cumsum(qx, axis=0)*abs(X[0,1]-X[0,0])
+    chi_av = (chix_integrate_cum + chiz_integrate_cum) / 2
+    fig, ax = plt.subplots(figsize=(18*cm,10*cm))
+    ax.contour(X,Z,chi_av, levels=20, linewidths=0.5)
+    return fig,ax
+
+def stream_func(X,Z,qx,qz):
+    dz = abs(Z[0,0]-Z[1,0])
+    dx_tilde = abs(X[0,0]-X[0,1])
+    dx = np.sqrt(dz**2+dx_tilde**2)
+    psi_hor = np.cumsum(qz,axis=1)*dx
+    psi_ver = np.cumsum(qx,axis=0)*dz
+    return psi_hor,psi_ver
+
+def plot_contourFlow(db,parametrization):
+    X = db["X"]
+    Z = db["Z"]
+    psi_hor, psi_ver = stream_func(X,Z, db["qx_array"], db["qz_array"])
+    fig,ax = plt.subplots(figsize = (18*cm,10*cm))
+    ax.contourf(X,Z,psi_ver)
+    return fig,ax
+
+def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap="Blues",
                      title=" ", xlabel="x [m]", ylabel="z [m]",
-                     density=1.0, color="k", linewidth=1.0, arrowsize=1,cmap_stream="magma"):
+                     density=1.0, color="k", linewidth=1.0, arrowsize=0,cmap_stream="magma"):
     """
     Plot streamlines for unsaturated flow on a skewed (parallelogram) grid.
 
@@ -180,11 +348,12 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap="Blues",
         Arrow size on streamlines.
     """
 
-    fig = plt.figure(figsize=(25*cm, 6*cm))
-    gs = fig.add_gridspec(nrows=1, ncols=3, width_ratios=[1., 0.01, 0.01],wspace=0.3)
+    fig = plt.figure(figsize=(25*cm, 8*cm))
+    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1, 0.02], wspace=0.35)
     ax = fig.add_subplot(gs[0, 0])
     cax0 = fig.add_subplot(gs[0, 1])
-    cax1 = fig.add_subplot(gs[0, 2])
+    # ax2 = fig.add_subplot(gs[0, 3])
+    # cax2 = fig.add_subplot(gs[0, 4])
 
     # ax.set_aspect('equal')
     ax.set_xlabel(xlabel)
@@ -194,30 +363,33 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap="Blues",
 
     # Optional scalar field as background
     if field is not None:
-        pcm = ax.pcolormesh(X, Z, field, shading="gouraud", cmap=cmap)
+        pcm = ax.pcolormesh(X, Z, field,vmin=0,vmax=0.46,shading="gouraud", cmap=cmap)
         fig.colorbar(pcm, cax=cax0,label=r"$\theta_l$ [-]")
 
     # For skewed / deformed grids: interpolate onto a rectilinear evaluation grid
-    nx, nz = 200, 200
-    xg = np.linspace(X.min(), X.max(), nx)
-    zg = np.linspace(Z.min(), Z.max(), nz)
+    Lx = X.max() - X.min()
+    Lz = Z.max() - Z.min()
+
+    # Precompute grids
+    xg = np.linspace(X.min(), X.max(), 200)
+    zg = np.linspace(Z.min(), Z.max(), 200)
     Xg, Zg = np.meshgrid(xg, zg)
+
+    start_points = np.c_[
+        np.linspace(0.5, 9.5, 20),
+        -0.1*np.linspace(0.5, 9.5, 20) - 0.05
+    ]
 
     qx_interp = griddata((X.flatten(), Z.flatten()), qx.flatten(), (Xg, Zg), method="linear")
     qz_interp = griddata((X.flatten(), Z.flatten()), qz.flatten()+slope*qx.flatten(), (Xg, Zg), method="linear")
 
     speed = np.sqrt(qx_interp**2 + qz_interp**2)
+
     # linewidth scaling (still log10-based if you prefer)
-    lw = np.log10(speed) - np.nanmin(np.log10(speed))
-    lw = lw / np.nanmax(lw) * linewidth
-    #lw = np.nan_to_num(lw, nan=0.001)
+    # lw = np.log10(speed) - np.nanmin(np.log10(speed))
+    # lw = lw / np.nanmax(lw) * linewidth
+    # lw = np.nan_to_num(lw, nan=1e-12)
 
-    # Streamplot colored by speed, with LogNorm
-    norm = matplotlib.colors.LogNorm(vmin=1e-10, vmax=1e-4)
-
-    seed_x = np.linspace(0.5,9.5,20)
-    seed_z = -0.1*seed_x-0.05
-    start_points = np.c_[seed_x.ravel(), seed_z.ravel()]
     # -----------------------------------------
     # Make linewidth depend on speed
     # -----------------------------------------
@@ -225,17 +397,14 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap="Blues",
     #lw = np.nan_to_num(lw, nan=0.001)
     stream = ax.streamplot(
         xg, zg, qx_interp, qz_interp,
-        density=density,
-        color=speed,
-        cmap=cmap_stream,
+        density=5,
+        color="k",
         linewidth=linewidth,
-        arrowsize=0,
-        arrowstyle="fancy",
-        norm=norm,
-        start_points=start_points
+        arrowsize=arrowsize,
+        start_points=start_points,
+        integration_direction="forward"
     )
-
-    fig.colorbar(stream.lines,cax=cax1,label=r"$||q||_2$ [m/s]")
+    #fig.colorbar(stream.lines,cax=cax1,label=r"$||q||_2$ [m/s]")
     # Draw boundary
     ax.plot([X[0,0],X[0,-1]],[Z[0,0],Z[0,-1]],"-k")
     ax.plot([X[-1,0],X[0,0]],[Z[-1,0],Z[0,0]],"-k")
@@ -261,7 +430,8 @@ def create_animation_streamlines(
     cmaps=("Blues", "bone_r", "coolwarm"),
     clabels=(r" ", r" ", r" "),
     cmap_stream="magma",
-    arrowsize=0
+    arrowsize=0, 
+    dt = None
 ):
     """Animate scalar fields and streamlines over time with flexible time axis."""
 
@@ -460,9 +630,14 @@ def create_animation_streamlines(
                         vmin=vmin3, vmax=vmax3, shading="gouraud")
 
         time_indicator.set_xdata([x_full[i]])
+    if dt is None:
+        nt = 1
+    else:   
+        nt = int(len(x_full)/(int((x_full[-1]- x_full[0])/dt)))
+        print(list(range(1,len(x_full),nt)))
     ani = animation.FuncAnimation(
         fig, update,
-        frames=len(cell1_t),
+        frames=range(1,len(x_full),1),
         interval=200
     )
 
