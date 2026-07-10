@@ -5,6 +5,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib
 import matplotlib.animation as animation
 from scipy.interpolate import griddata
+from scipy.integrate import cumulative_trapezoid
 import cmocean
 import matplotlib.dates as mdates
 import matplotlib as mpl
@@ -21,6 +22,21 @@ green = (30/255, 136/255, 229/255)
 blue = (0, 77/255, 46/255)
 cm = 1/2.54  # centimeters in inches
 plt.rcParams['font.size'] = 12
+
+# Colorblind-safe categorical palette (Okabe & Ito, 2008) for comparing
+# parametrizations across figures. Drying-family and impedance-family
+# parametrizations are grouped into related hues; linestyles are a redundant
+# (non-color) identity channel for print/grayscale and CVD readability.
+PARAMETRIZATION_STYLE = {
+    "drying":             {"color": "#0072B2", "linestyle": "-"},        # blue
+    "drying_omega10":     {"color": "#56B4E9", "linestyle": "--"},       # sky blue
+    "permaFoam_omega10":  {"color": "#D55E00", "linestyle": "-."},       # vermillion
+    "permaFoam_omega50":  {"color": "#E69F00", "linestyle": ":"},        # orange
+    "cap":                {"color": "#009E73", "linestyle": (0, (3, 1, 1, 1))},  # bluish green
+}
+
+def parametrization_style(parametrization):
+    return PARAMETRIZATION_STYLE.get(parametrization, {"color": "black", "linestyle": "-"})
 
 def plot_grid(geom):
     """Plot the grid and nodes of the geometry."""
@@ -60,17 +76,14 @@ def plot_domain(X, Z, cellValues, colormap="Blues", title=" ", colorbar_label=No
     fig, ax = plt.subplots(1,2,figsize=(19*cm, 7*cm), gridspec_kw={'width_ratios': [1, 0.4]})
     ax[1].set_aspect('equal')
     cbar = ax[0].pcolormesh(X, Z, cellValues, cmap=colormap,shading = "gouraud", linewidth=0.05)
-    ax[0].plot(X[-1,:],Z[-1,:],"-", color = orange, linewidth = 2,zorder=1000)
-    # ax[0].plot([X[-1,-1],X[-1,-3]],[Z[-1,-1],Z[-1,-3]],"-k",zorder=1001)
-    # ax[0].plot([X[-3,-1],X[-3,-3]],[Z[-3,-1],Z[-3,-3]],"-k",zorder=1002)
-    # ax[0].plot([X[-1,-3],X[-1,-3]],[Z[-1,-3],Z[-3,-3]],"-k",zorder=1003)
-    ax[0].plot(X[:,0],Z[:,0],"-", color = green,linewidth = 2, zorder=1001)
-    ax[0].plot(X[:, -1], Z[:, -1], "-", color = blue,linewidth = 2, zorder=1002)
-    ax[0].plot(X[0,:], Z[0,:], "-", color = green, linewidth = 2, zorder=1003)
-    ax[0].plot(X[-1,:],-.25-0.1*X[-1,:],"-k",zorder=1004) 
-    ax[0].plot(X[-1,:],-.5-0.1*X[-1,:],"-k",zorder=1005)
-    # ax[0].text(X[-1,0]+0.05,-.5-0.1*X[-1,0]+0.04,"loam", fontsize=12, color="k")
-    # ax[0].text(X[-1,0]+0.05,-.5-0.1*X[-1,0]-0.25,"sand", fontsize=12, color="k")
+    ax[0].plot(X[-1,:],Z[-1,:],"-", color = "#D55E00", linewidth = 2,zorder=1000)
+
+    ax[0].plot(X[:,0],Z[:,0],"-", color = "#56B4E9",linewidth = 2, zorder=1004)
+    ax[0].plot(X[:, -1], Z[:, -1], "-", color = "#009E73",linewidth = 2, zorder=1004)
+    ax[0].plot(X[0,:], Z[0,:], "-", color = "#56B4E9", linewidth = 2, zorder=1006)
+    ax[0].plot(X[-1,:],-.25-0.1*X[-1,:],"-k",zorder=1002) 
+    ax[0].plot(X[-1,:],-.5-0.1*X[-1,:],"-k",zorder=1000)
+
 
     ax[0].spines[['top','right']].set_visible(False)
     ax[0].set_xlabel("x [m]")
@@ -87,7 +100,7 @@ def plot_domain(X, Z, cellValues, colormap="Blues", title=" ", colorbar_label=No
     y_l = -0.1*x
     y_u = -0.1*x+.025
     ax[1].plot(0.0125,0.0125,"o",color=persian_red,markersize=9,zorder=1001)
-    ax[1].text(0.0125,0.0117,r"primary var.", fontsize=12, color=persian_red, zorder=1001, va="top", ha="center")
+    ax[1].text(0.0125,0.01,r"primary var.", fontsize=12, color=persian_red, zorder=1001, va="top", ha="center")
     ax[1].plot(x,y_l,"-k",zorder=1001)
     ax[1].plot(np.array([0,0.025]),np.array([0,0]),"--k",zorder=1001)
     ax[1].plot(x,y_u,"-k",zorder=1001)
@@ -155,91 +168,19 @@ def plot_lineProfile(geom, cellValue1, cellValue2, x_position, title=" ", xlabel
     ax.title.set_text(f"Line Profile at x = {x_position*geom.dx} m")
     return fig, ax
 
-def plot_angle_q(db, parametrization):
+def parametrization_label(parametrization):
+    return {
+        "drying": "drying",
+        "permaFoam_omega10": r"impedance, $\Omega=10$",
+        "permaFoam_omega50": r"impedance, $\Omega=50$",
+        "cap": "capillary bundle",
+        "drying_omega10": r"drying, $\Omega=10$",
+    }.get(parametrization)
 
-    times_days = np.array(db["time_array"]) / 24 / 60 / 60
-
-    # Colormap + normalization
-    cmap = cmocean.cm.thermal_r
-    norm = mpl.colors.Normalize(vmin=times_days.min(),
-                                vmax=times_days.max())
-
-    # Colors for each curve
-    colors = cmap(norm(times_days))
-
-    fig, ax = plt.subplots(figsize=(8*cm,10.5*cm))
-
-    for i in range(1,len(db["time_array"]),2):
-        qx = db["qx_centered_array"][i][:, -1]
-        qz = db["qz_centered_array"][i][:, -1]
-
-        q_norm = np.sqrt(qx**2 + qz**2)
-
-        cos_theta = -qz / np.clip(q_norm, 1e-12, None)
-        angle = np.arccos(np.clip(cos_theta, -1.0, 1.0))
-        angles_deg = np.degrees(angle)
-        # q_vector = np.concatenate([db["qx_array"][i][:,-1], db["qz_array"][i][:,-1]]).T
-        # angle = angle_between(q_vector, z_vector)
-        # angles.append(angle)
-        ax.plot(angles_deg,db["Z"][:,-1],".",linewidth=1.5,label=f"t={db['time_array'][i]/24/60/60:.2f} days", color=colors[i])
-    
-    ax.axhline(-1.25, color='k', linestyle='--', linewidth=1.5)
-    ax.axhline(-1.5, color='k', linestyle='--', linewidth=1.5)
-    ax.spines[['top', 'right']].set_visible(False)
-    # Create colorbar
-    sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])  # required for older matplotlib versions
-
-    cbar = fig.colorbar(sm, ax=ax)
-    cbar.set_label("Time [days]")
-    # Combine legends from both axes
-    ax.spines['left'].set_position(('outward', 10))
-    #ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
-    ax.set_xlim(-5, 185)
-    plt.xlabel(r"angle between $\vec{q}$ and vertical [°]")
-    plt.ylabel("Depth [m]")
-    fig.tight_layout()
-    plt.title(f"{parametrization}: x={db['X'][0,-1]+0.025/2:.2f} m")
-    return fig, ax
-
-
-def plot_qx_out(db, parametrization):
-    fig, ax = plt.subplots(figsize=(8*cm,10.5*cm))
-    # Time values in days
-    times_days = np.array(db["time_array"]) / 24 / 60 / 60
-
-    # Colormap + normalization
-    cmap = cmocean.cm.thermal_r
-    norm = mpl.colors.Normalize(vmin=times_days.min(),
-                                vmax=times_days.max())
-
-    # Colors for each curve
-    colors = cmap(norm(times_days))
-
-    for i in range(0,len(db["time_array"]),2):
-        ax.semilogx(db["qx_array"][i][:,-1],db["Z"][:,-1],".",linewidth=1.5,label=f"t={db['time_array'][i]/24/60/60:.2f} days", color=colors[i])
-    ax.axhline(-1.25, color='k', linestyle='--', linewidth=1.5)
-    ax.axhline(-1.5, color='k', linestyle='--', linewidth=1.5)
-    ax.spines[['top', 'right']].set_visible(False)
-    # Create colorbar
-    sm = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])  # required for older matplotlib versions
-
-    cbar = fig.colorbar(sm, ax=ax)
-    cbar.set_label("Time [days]")
-    # Combine legends from both axes
-    ax.spines['left'].set_position(('outward', 10))
-    ax.set_xlim(1e-11,1e-4)
-    #ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
-
-    plt.xlabel(r"$q_x$ [m/s]")
-    plt.ylabel("Depth [m]")
-    fig.tight_layout()
-    plt.title(f"{parametrization}: x={db['X'][0,-1]+0.025/2:.2f} m")
-    return fig, ax
-
-def plot_interflow(db, parametrization, ylim=None):
-    fig, ax = plt.subplots(figsize=(9*cm,9.5*cm))
+def plot_interflow(db, parametrization,title=None, ylim=None, relative = False, fig=None, ax=None):
+    standalone = ax is None
+    if standalone:
+        fig, ax = plt.subplots(figsize=(9*cm,9.5*cm))
     q_top = []
     q_bottom = []
     q_top_rel = []
@@ -261,35 +202,169 @@ def plot_interflow(db, parametrization, ylim=None):
         q_top.append(np.sum(abs(db["qx_array"][i][:,-1][idx_top])*dz))
         q_bottom.append(np.sum(abs(db["qx_array"][i][:,-1][idx_bottom])*dz))
 
-        q_tot = q_top[-1]+q_bottom[-1]
+        q_tot = q_top[-1]+q_bottom[-1]+q_surf[-1]
         q_top_rel.append(q_top[-1]/q_tot)
-        q_bottom_rel.append(q_bottom[-1]/q_tot) 
-    ax.plot(times_days[5::], q_surf, "-", linewidth = 2, label=r"$q_{surface}$", color=green)
-    ax.plot(times_days[5::], q_bottom, ":", linewidth = 2, label=r"$q_{bottom}$", color=persian_red)
-    ax.plot(times_days[5::], q_top, "--", linewidth = 2, label=r"$q_{top}$", color=carolina_blue)
+        q_bottom_rel.append(q_bottom[-1]/q_tot)
+        q_surf_rel.append(q_surf[-1]/q_tot) 
+    q_surf_arr = np.asarray(q_surf)
+    has_surf = not np.all(q_surf_arr[~np.isnan(q_surf_arr)] == 0)
+    if relative==False:
+        if has_surf:
+            ax.plot(times_days[5::], q_surf, "-", linewidth = 2, label=r"$q_{surface}$", color=green)
+        ax.plot(times_days[5::], q_bottom, ":", linewidth = 2, label=r"$q_{bottom}$", color=persian_red)
+        ax.plot(times_days[5::], q_top, "--", linewidth = 2, label=r"$q_{top}$", color=carolina_blue)
+    else:
+        if has_surf:
+            ax.plot(times_days[5::], q_surf_rel, "-", linewidth = 2, label=r"$q_{surface}$", color=green)
+        ax.plot(times_days[5::], q_bottom_rel, ":", linewidth = 2, label=r"$q_{bottom}$", color=persian_red)
+        ax.plot(times_days[5::], q_top_rel, "--", linewidth = 2, label=r"$q_{top}$", color=carolina_blue)
     ax.spines[['top', 'right']].set_visible(False)
 
     # Combine legends from both axes
     ax.spines['left'].set_position(('outward', 10))
     #ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
     ax.set_ylim(ylim)
-    plt.xlabel(r"time [days]")
-    plt.ylabel(r"$q_i / q_{tot}$ [-]")
-    fig.legend(loc="center", facecolor='none', edgecolor='none')
-    if parametrization == "drying":
-        plt.title(f"drying")
-    if parametrization == "permaFoam_omega10":
-        plt.title(r"impedance, $\Omega=10$")
-    if parametrization == "permaFoam_omega50":
-        plt.title(r"impedance, $\Omega=50$")
-    if parametrization == "cap":
-        plt.title(f"capillary bundle")
-    if parametrization == "drying_omega10":
-        plt.title(r"drying, $\Omega=10$")
-    fig.tight_layout()
+    ax.set_xlabel(r"time [days]")
+    ax.set_ylabel(r"$Q$ [$m^2s^{-1}$]")
+    if standalone:
+        fig.legend(loc="center", facecolor='none', edgecolor='none')
+    else:
+        ax.legend(loc="best", facecolor='none', edgecolor='none')
+    ax.set_title(title or parametrization_label(parametrization))
+    if standalone:
+        fig.tight_layout()
     return fig, ax
 
-def plot_streamContours(db, index, parametrization):
+def exit_fluxes(db, relative=False):
+    """Instantaneous exit fluxes (per unit width) for q_top, q_bottom, q_surf.
+
+    Same fluxes as used by `plot_interflow`. With `relative=True`, each series
+    is expressed as its instantaneous share of q_top+q_bottom+q_surf.
+    """
+    dz = abs(db["Z"][0,1] - db["Z"][0,0])
+    dx = abs(db["X"][1,0] - db["X"][0,0])
+    dx_tilde = np.sqrt(dx**2 + dz**2)
+
+    idx_top = db["Z"][:,-1] >= -1.5
+    idx_bottom = db["Z"][:,-1] < -1.5
+
+    time_s = np.array(db["time_array"])[5:]
+    times_days = time_s / 24 / 60 / 60
+
+    q_surf = np.array([np.sum(np.abs(db["q_runoff"][i]))*dx_tilde for i in range(5, len(db["time_array"]))])
+    q_top = np.array([np.sum(np.abs(db["qx_array"][i][:,-1][idx_top])*dz) for i in range(5, len(db["time_array"]))])
+    q_bottom = np.array([np.sum(np.abs(db["qx_array"][i][:,-1][idx_bottom])*dz) for i in range(5, len(db["time_array"]))])
+
+    if relative:
+        q_tot = np.where(q_top + q_bottom + q_surf == 0, np.nan, q_top + q_bottom + q_surf)
+        q_surf, q_top, q_bottom = q_surf/q_tot, q_top/q_tot, q_bottom/q_tot
+
+    return times_days, q_top, q_bottom, q_surf
+
+def cumulative_exit_volumes(db, relative=False):
+    """Cumulative exit volumes (per unit width) for q_top, q_bottom, q_surf.
+
+    Integrates the raw fluxes from `exit_fluxes` over time (trapezoidal, on the
+    true simulation times, since the solver uses adaptive stepping). With
+    `relative=True`, each series is expressed as its share of the running
+    cumulative total (V_top+V_bottom+V_surf) — a much less noise-sensitive
+    partitioning metric than the instantaneous flux ratio, since it isn't
+    dominated by short high-flux events (e.g. a single ERA5 snowmelt spike).
+    """
+    time_s = np.array(db["time_array"])[5:]
+    times_days, q_top, q_bottom, q_surf = exit_fluxes(db, relative=False)
+
+    V_surf = cumulative_trapezoid(q_surf, time_s, initial=0)
+    V_top = cumulative_trapezoid(q_top, time_s, initial=0)
+    V_bottom = cumulative_trapezoid(q_bottom, time_s, initial=0)
+
+    if relative:
+        V_tot = np.where(V_top + V_bottom + V_surf == 0, np.nan, V_top + V_bottom + V_surf)
+        V_surf, V_top, V_bottom = V_surf/V_tot, V_top/V_tot, V_bottom/V_tot
+
+    return times_days, V_top, V_bottom, V_surf
+
+def plot_cumulative_interflow(db, parametrization, title=None, ylim=None, relative=False, fig=None, ax=None, legend = False):
+    standalone = ax is None
+    if standalone:
+        fig, ax = plt.subplots(figsize=(9*cm,9.5*cm))
+
+    times_days, V_top, V_bottom, V_surf = cumulative_exit_volumes(db, relative=relative)
+
+    ax.plot(times_days, V_surf, "-", linewidth = 2, label=r"$V_{surface}$", color=green)
+    ax.plot(times_days, V_bottom, ":", linewidth = 2, label=r"$V_{bottom}$", color=persian_red)
+    ax.plot(times_days, V_top, "--", linewidth = 2, label=r"$V_{top}$", color=carolina_blue)
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.spines['left'].set_position(('outward', 10))
+    ax.set_ylim(ylim)
+    ax.set_xlabel(r"time [days]")
+    ax.set_ylabel(r"cumulative $V_i / V_{tot}$ [-]" if relative else r"cumulative volume [m$^2$]")
+    if legend == True:
+        if standalone:
+            fig.legend(loc="center", facecolor='none', edgecolor='none')
+        else:
+            ax.legend(loc="best", facecolor='none', edgecolor='none')
+    ax.set_title(title or parametrization_label(parametrization))
+    if standalone:
+        fig.tight_layout()
+    return fig, ax
+
+def _plot_flux_comparison(dbs, flux_fn, parametrizations, quantity, relative, ylabel, fig, ax,legend = False):
+    standalone = ax is None
+    if standalone:
+        fig, ax = plt.subplots(figsize=(12*cm,9.5*cm))
+
+    if parametrizations is None:
+        parametrizations = list(dbs.keys())
+
+    quantity_index = {"top": 1, "bottom": 2, "surf": 3}[quantity]
+    for parametrization in parametrizations:
+        times_days, *series = flux_fn(dbs[parametrization], relative=relative)
+        style = parametrization_style(parametrization)
+        ax.plot(times_days, series[quantity_index-1], linewidth=2,
+               label=parametrization_label(parametrization) or parametrization,
+               color=style["color"], linestyle=style["linestyle"])
+
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.spines['left'].set_position(('outward', 10))
+    ax.set_xlabel(r"time [days]")
+    ax.set_ylabel(ylabel)
+    if legend == True:
+        ax.legend(loc="best", facecolor='none', edgecolor='none')
+    if standalone:
+        fig.tight_layout()
+    return fig, ax
+
+def plot_cumulative_interflow_comparison(dbs, parametrizations=None, quantity="top", relative=True,
+                                         title=None, ylim=None, fig=None, ax=None, legend = False):
+    """Overlay cumulative exit-volume curves for one flow path across several parametrizations.
+
+    `dbs` is a dict {parametrization: db}. `quantity` selects which path to compare
+    ("top"=interflow, "bottom"=baseflow, "surf"=surface runoff).
+    """
+    ylabel_quantity = {"top": r"$V_{top}$", "bottom": r"$V_{bottom}$", "surf": r"$V_{surface}$"}[quantity]
+    ylabel = f"cumulative {ylabel_quantity}" + (r"$/V_{tot}$ [-]" if relative else " [m$^2$]")
+    fig, ax = _plot_flux_comparison(dbs, cumulative_exit_volumes, parametrizations, quantity, relative, ylabel, fig, ax,legend)
+    ax.set_ylim(ylim)
+    ax.set_title(title or "")
+    return fig, ax
+
+def plot_interflow_comparison(dbs, parametrizations=None, quantity="top", relative=False,
+                              title=None, ylim=None, fig=None, ax=None):
+    """Overlay instantaneous exit-flux curves for one flow path across several parametrizations.
+
+    `dbs` is a dict {parametrization: db}. `quantity` selects which path to compare
+    ("top"=interflow, "bottom"=baseflow, "surf"=surface runoff). Unlike
+    `plot_cumulative_interflow_comparison`, this shows the raw (non-integrated) flux.
+    """
+    ylabel_quantity = {"top": r"$q_{top}$", "bottom": r"$q_{bottom}$", "surf": r"$q_{surface}$"}[quantity]
+    ylabel = f"{ylabel_quantity}" + (r"$/q_{tot}$ [-]" if relative else " [m s$^{-1}$]")
+    fig, ax = _plot_flux_comparison(dbs, exit_fluxes, parametrizations, quantity, relative, ylabel, fig, ax)
+    ax.set_ylim(ylim)
+    ax.set_title(title or "")
+    return fig, ax
+
+def plot_streamContours(db, index):
     X = db["X_plot"]
     Z = db["Z_plot"]
 
@@ -314,7 +389,7 @@ def stream_func(X,Z,qx,qz):
     psi_ver = np.cumsum(qx,axis=0)*dz
     return psi_hor,psi_ver
 
-def plot_contourFlow(db,parametrization):
+def plot_contourFlow(db):
     X = db["X"]
     Z = db["Z"]
     psi_hor, psi_ver = stream_func(X,Z, db["qx_array"], db["qz_array"])
@@ -322,9 +397,10 @@ def plot_contourFlow(db,parametrization):
     ax.contourf(X,Z,psi_ver)
     return fig,ax
 
-def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap="Blues",
+def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap="Purples",
                      title=" ", xlabel="x [m]", ylabel="z [m]",
-                     density=1.0, color="k", linewidth=1.0, arrowsize=0,cmap_stream="magma"):
+                     density=1.0, color="k", linewidth=1.0, arrowsize=0,cmap_stream="magma",
+                     fig=None, ax=None, cax=None):
     """
     Plot streamlines for unsaturated flow on a skewed (parallelogram) grid.
 
@@ -348,12 +424,19 @@ def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap="Blues",
         Arrow size on streamlines.
     """
 
-    fig = plt.figure(figsize=(25*cm, 8*cm))
-    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1, 0.02], wspace=0.35)
-    ax = fig.add_subplot(gs[0, 0])
-    cax0 = fig.add_subplot(gs[0, 1])
-    # ax2 = fig.add_subplot(gs[0, 3])
-    # cax2 = fig.add_subplot(gs[0, 4])
+    X = np.asarray(X, dtype=np.float64)
+    Z = np.asarray(Z, dtype=np.float64)
+    qx = np.asarray(qx, dtype=np.float64)
+    qz = np.asarray(qz, dtype=np.float64)
+
+    standalone = ax is None
+    if standalone:
+        fig = plt.figure(figsize=(25*cm, 8*cm))
+        gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=[1, 0.02], wspace=0.35)
+        ax = fig.add_subplot(gs[0, 0])
+        cax0 = fig.add_subplot(gs[0, 1])
+    else:
+        cax0 = cax
 
     # ax.set_aspect('equal')
     ax.set_xlabel(xlabel)
@@ -364,7 +447,10 @@ def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap="Blues",
     # Optional scalar field as background
     if field is not None:
         pcm = ax.pcolormesh(X, Z, field,vmin=0,vmax=0.46,shading="gouraud", cmap=cmap)
-        fig.colorbar(pcm, cax=cax0,label=r"$\theta_l$ [-]")
+        if cax0 is not None:
+            fig.colorbar(pcm, cax=cax0,label=r"$\theta_i$ [-]")
+        else:
+            fig.colorbar(pcm, ax=ax,label=r"$\theta_i$ [-]")
 
     # For skewed / deformed grids: interpolate onto a rectilinear evaluation grid
     Lx = X.max() - X.min()
@@ -382,8 +468,6 @@ def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap="Blues",
 
     qx_interp = griddata((X.flatten(), Z.flatten()), qx.flatten(), (Xg, Zg), method="linear")
     qz_interp = griddata((X.flatten(), Z.flatten()), qz.flatten()+slope*qx.flatten(), (Xg, Zg), method="linear")
-
-    speed = np.sqrt(qx_interp**2 + qz_interp**2)
 
     # linewidth scaling (still log10-based if you prefer)
     # lw = np.log10(speed) - np.nanmin(np.log10(speed))
@@ -412,9 +496,119 @@ def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap="Blues",
     ax.plot([X[0,-1],X[-1,-1]],[Z[0,-1],Z[-1,-1]],"-k")
 
     ax.set_title(title)
-    fig.tight_layout()
+    if standalone:
+        fig.tight_layout()
 
     return fig, ax
+
+A4_WIDTH_CM = 21.0
+A4_HEIGHT_CM = 29.7
+
+def plot_interflow_streamlines(db, parametrization, index, slope=-0.1, title=None,
+                               ylim=None, relative=False, field_key="theta_i_total",
+                               figsize=None, width_ratios=(2, 1), n_per_page=5,
+                               title_fontsize=None, annotation_fontsize=None):
+    """
+    Combined figure: streamlines (left, background field + colorbar) next to
+    the interflow partitioning plot (right), with a bold top-left title.
+
+    Defaults to a figure sized so that `n_per_page` of these stack to fill
+    one A4 page (e.g. n_per_page=5 -> each figure is 21 x 5.94 cm).
+    """
+    if figsize is None:
+        figsize = (A4_WIDTH_CM*cm, A4_HEIGHT_CM/n_per_page*cm)
+    if title_fontsize is None:
+        title_fontsize = max(9, figsize[1]/cm * 2.2)
+    if annotation_fontsize is None:
+        annotation_fontsize = max(7, figsize[1]/cm * 1.5)
+
+    fig = plt.figure(figsize=figsize)
+    gs = fig.add_gridspec(nrows=1, ncols=2, width_ratios=list(width_ratios), wspace=0.7)
+    gs_stream = gs[0, 0].subgridspec(nrows=1, ncols=2, width_ratios=[1, 0.03], wspace=0.05)
+    ax_stream = fig.add_subplot(gs_stream[0, 0])
+    cax = fig.add_subplot(gs_stream[0, 1])
+    ax_interflow = fig.add_subplot(gs[0, 1])
+
+    time_days = db["time_array"][index] / 24 / 60 / 60
+
+    plot_streamlines(db, db["X"], db["Z"], db["qx_centered_array"][index], db["qz_centered_array"][index],
+                     slope=slope, field=db[field_key][index], linewidth=1,
+                     title="", fig=fig, ax=ax_stream, cax=cax)
+    ax_stream.text(0.98, 0.97, f"t = {time_days:.0f} days", transform=ax_stream.transAxes,
+                  ha="right", va="top", fontsize=annotation_fontsize,
+                  bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, pad=2))
+
+    plot_interflow(db, parametrization, ylim=ylim, relative=relative, fig=fig, ax=ax_interflow)
+    ax_interflow.set_title("")
+    ax_interflow.axvline(time_days, color="black", linestyle="--")
+
+    fig.suptitle(title or parametrization_label(parametrization),
+                 x=0.02, ha="left", fontsize=title_fontsize, fontweight="bold")
+    fig.subplots_adjust(left=0.13, right=0.98, bottom=0.24, top=0.80)
+
+    return fig, (ax_stream, ax_interflow, cax)
+
+def plot_Ku(db, parametrization, indices, interp_folder="../input/interpolation/",
+           labels=None, slope=-0.1, vmin=1e-18, vmax=1e-4, cmap="magma",
+           suptitle=None, figsize=None):
+    """
+    Unsaturated conductivity K_u = Ksat * k_rel(h_c, T) at given time indices,
+    using the parametrization's own cached k_rel interpolation table (the
+    same closure the simulation itself used -- drying curve, impedance-Omega,
+    or capillary bundle) rather than an approximation. Diagnoses capillary-
+    barrier vs. ice-lens contributions to interflow: the loam layer (soil
+    type 2) is outlined in dashed cyan.
+
+    The `soil` array is built exactly as in
+    notebooks/ERA5_simulations/1Simulate_*.ipynb.
+    """
+    import pickle
+    with open(f"{interp_folder}interpolation_{parametrization}.pkl", "rb") as f:
+        soil_type = pickle.load(f)
+
+    times_days = np.array(db["time_array"]) / 86400
+    if labels is None:
+        labels = [f"day {times_days[idx]:.0f}" for idx in indices]
+
+    X = np.asarray(db["X"], dtype=np.float64)
+    Z = np.asarray(db["Z"], dtype=np.float64)
+
+    soil = np.ones_like(X)
+    loam_indices = np.where((Z <= -0.25 + slope*X) & (Z >= -0.5 + slope*X))
+    soil[loam_indices] = 2
+
+    Ksat_field = np.where(soil == 1, soil_type[1]["Ksat"], soil_type[2]["Ksat"])
+
+    n = len(indices)
+    if figsize is None:
+        figsize = (13.5*n*cm, 11*cm)
+    fig, axes = plt.subplots(1, n, figsize=figsize, constrained_layout=True)
+    if n == 1:
+        axes = [axes]
+
+    for ax, idx, label in zip(axes, indices, labels):
+        hc = np.asarray(db["h_c_total"][idx], dtype=np.float64)
+        T = np.asarray(db["T_total"][idx], dtype=np.float64)
+        krel = np.where(soil == 1,
+                        np.asarray(soil_type[1]["k_rel_interp"](hc.flatten(), T.flatten())).reshape(hc.shape),
+                        np.asarray(soil_type[2]["k_rel_interp"](hc.flatten(), T.flatten())).reshape(hc.shape))
+        Ku = np.clip(Ksat_field*krel, vmin, vmax)
+
+        pcm = ax.pcolormesh(X, Z, Ku, norm=mpl.colors.LogNorm(vmin=vmin, vmax=vmax),
+                            cmap=cmap, shading="gouraud")
+        ax.plot(X[0, :], -0.25 + slope*X[0, :], "--", color="cyan", linewidth=1)
+        ax.plot(X[0, :], -0.5 + slope*X[0, :], "--", color="cyan", linewidth=1)
+        ax.spines[['top', 'right']].set_visible(False)
+        ax.spines['left'].set_position(('outward', 10))
+        ax.set_title(label)
+        ax.set_xlabel("x [m]")
+
+    axes[0].set_ylabel("z [m]")
+    fig.colorbar(pcm, ax=axes, label=r"$K_u = K_{sat} \cdot k_{rel}(h_c, T)$ [m/s]", shrink=0.8)
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=13, fontweight="bold")
+
+    return fig, axes
 
 def create_animation_streamlines(
     X, Z,
@@ -600,7 +794,6 @@ def create_animation_streamlines(
             coll.remove() # removes previous streamlines 
         for pat in ax[0].patches[:]: 
             pat.remove()
-
         ax[0].pcolormesh(X, Z, cell1_t[i], cmap=cmaps[0],
                         vmin=vmin1, vmax=vmax1, shading="gouraud")
 

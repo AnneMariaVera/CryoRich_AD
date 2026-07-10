@@ -4,278 +4,11 @@ import utils.petrophysic as petro
 import utils.petrophysics_capillaryBundles as petro_cap
 from functools import partial
 
-@partial(jax.jit,static_argnames=(['rho_i', 'H_f', 'rho_l', 'c_l','CN']))
-def volbal_coupled_permaFoam(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt, Theta_s, Theta_r, alpha, N, Ksat, rho_i, H_f, rho_l, c_l, X, Z, CN):
-    """
-    Calculates the residual of the heat equation with phase change.
-    Parameters
-    ----------
-    T_new, T_old : array (nz, nx)
-        Temperature field at t+1 and t.
-    htot_new, htot_old : array (nz, nx)
-        Hydraulic head fields, used for advection.
-    qx, qz : array
-        Darcy fluxes at faces (m/s), shape (nz, nx+1) and (nz+1, nx).
-    rho_l : float
-        Density of liquid water [kg/m³].
-    C_l : float
-        Specific heat of liquid water [J/(kg K)].
-    C_eq : array or float
-        Equivalent volumetric heat capacity [J/(m³ K)].
-    lambda_eq : array or float
-        Effective thermal conductivity [W/(m K)].
-    H_f : float
-        Latent heat of fusion [J/kg].
-    theta_i_new, theta_i_old : array
-        Volumetric ice content at t+1 and t.
-    X, Z : mesh coordinate arrays.
-    dt : float
-        Time step [s].
-    CN : float
-        Crank–Nicolson weighting (0.5 = semi-implicit).
-
-    Returns
-    -------
-    res_T : array (nz, nx)
-        Heat equation residual.
-    qT_adv : tuple (qx_adv, qz_adv)
-        Advective heat fluxes in x/z direction.
-    qT_cond : tuple (qx_cond, qz_cond)
-        Conductive heat fluxes in x/z direction.
-    """ 
-    # ================================  RICHARDS EQUATION  ==================================
-    # Capillary head
-    h_c_old = jnp.maximum(Z - htot_old, 0.0)
-    h_c_new = jnp.maximum(Z - htot_new, 0.0)
-
-    nz, nx = X.shape
-    dz = jnp.abs(Z[1, 0] - Z[0, 0]) 
-    dx_tilde = jnp.abs(X[0, 1] - X[0, 0])  
-    dx = jnp.sqrt(jnp.square(dx_tilde)+ jnp.square(dz))
-
-    # Effective saturation
-    Se_old = petro.effsat(h_c_old, alpha, N)
-    Se_new = petro.effsat(h_c_new, alpha, N)
-
-    # Volumetric water content
-    Theta_old = Theta_r + (Theta_s - Theta_r) * Se_old
-    Theta_new = Theta_r + (Theta_s - Theta_r) * Se_new
-
-    # Phase separation
-    theta_i_new, theta_l_new = petro.phase_separation(Theta_new, Theta_r, T_new, T_freeze=0.0, omega=1.0)
-    theta_i_old, theta_l_old = petro.phase_separation(Theta_old, Theta_r, T_old, T_freeze=0.0, omega=1.0)
-
-    # Relative permeability
-    krel_old = petro.relperm(Se_old, N)
-    krel_new = petro.relperm(Se_new, N)
-
-    # Impedance factor 
-    imped_new = petro.impedance_factor(theta_i_new)
-    imped_old = petro.impedance_factor(theta_i_old)
-
-    # Reduces hydraulic conductivity
-    krel_old *= imped_old
-    krel_new *= imped_new
-
-    # Initial residual (without div(q))
-    res_r = Theta_new - Theta_old
-
-    # Flux arrays
-    qx = jnp.zeros((nz, nx + 1))
-    qz = jnp.zeros((nz + 1, nx))
-
-#    # maximum infiltration rate
-#     S_effective =  (Theta_s-theta_i_old-Theta_r) / (Theta_s - Theta_r)
-#     Ksat_effective = Ksat * petro.relperm(S_effective, N) # Ksat * Se_new
-#     q_infil_max = Ksat_effective[-1, :]
-
-#     # maximum evaporation rate based on available water and conductivity
-#     theta_top = theta_l_old[-1,:] - Theta_r[-1,:]
-#     q_evap_available = -theta_top * dz / dt   # max flux that won't drain below residual water
-#     q_evap_max = -Ksat_effective[-1,:]
-#     root_scaling = petro.feddes_func(h_c_old[-1,:])
-#     q_infil = jnp.where(
-#         q_inf >= 0,
-#         jnp.minimum(q_inf, q_infil_max),
-#         jnp.maximum(q_inf, jnp.maximum(q_evap_available, q_evap_max*root_scaling))
-#     )
-    q_infil = q_inf
-
-    # Excess water becomes runoff
-    q_runoff = jnp.maximum(q_inf - q_infil, 0.0)
-    
-    # Apply surface flux BC 
-    res_r = res_r.at[-1, :].add(-q_infil/ dz * dt)
-    qz = qz.at[-1, :].set(-q_infil)
-
-
-    # Update fluxes
-    res_v, qz = vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, dt)
-    res_h, qx = horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, Z, dt)
-
-    res_rich = res_r + res_v + res_h
-    # Average face fluxes
-    qx_centered = 0.5 * (qx[:, :-1] + qx[:, 1:])
-    qz_centered = 0.5 * (qz[:-1, :] + qz[1:, :])
-
-    # ================================  HEAT EQUATION  ==================================
-    # Effective heat capacity and conductivity 
-
-    C_eff_new = petro.effective_heatcapacity(theta_l_new, theta_i_new, Theta_s)
-    C_eff_old = petro.effective_heatcapacity(theta_l_old, theta_i_old, Theta_s)
-
-    lambda_eff_new = petro.effective_thermalconductivity(theta_l_new, theta_i_new, Theta_s)
-
-    # Temporal storage term 
-    storage_new = (C_eff_new * T_new - rho_i * H_f * theta_i_new)/dt
-    storage_old = (C_eff_old * T_old - rho_i * H_f * theta_i_old)/dt
-    res_T = storage_new - storage_old
-
-    # Convective and conductive flux terms
-    res_h_cond = horizontal_condflux_update(lambda_eff_new, T_old, T_new, dx, dt)
-    res_v_cond = vertical_condflux_update(lambda_eff_new, T_old, T_new, T_surface, dz, dt)
-    res_h_conv = horizontal_convflux_update(qx, c_l, T_new, rho_l, dx, dt)
-    res_v_conv = vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dt)
-    res_T += res_v_conv + res_h_conv + res_h_cond + res_v_cond
-    res_T /= 1e6
-    # Combine residuals
-    res_total = jnp.concatenate([res_rich.ravel(), res_T.ravel()])
-    return res_total, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_new, theta_i_new
-
-@partial(jax.jit,static_argnames=(['rho_i', 'H_f', 'rho_l', 'c_l','CN']))
-def volbal_coupled_drying(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt, Theta_s, Theta_r, alpha, N, Ksat, rho_i, H_f, rho_l, c_l, X, Z, CN):
-    """
-    Calculates the residual of the heat equation with phase change.
-    Parameters
-    ----------
-    T_new, T_old : array (nz, nx)
-        Temperature field at t+1 and t.
-    htot_new, htot_old : array (nz, nx)
-        Hydraulic head fields, used for advection.
-    qx, qz : array
-        Darcy fluxes at faces (m/s), shape (nz, nx+1) and (nz+1, nx).
-    rho_l : float
-        Density of liquid water [kg/m³].
-    C_l : float
-        Specific heat of liquid water [J/(kg K)].
-    C_eq : array or float
-        Equivalent volumetric heat capacity [J/(m³ K)].
-    lambda_eq : array or float
-        Effective thermal conductivity [W/(m K)].
-    H_f : float
-        Latent heat of fusion [J/kg].
-    theta_i_new, theta_i_old : array
-        Volumetric ice content at t+1 and t.
-    X, Z : mesh coordinate arrays.
-    dt : float
-        Time step [s].
-    CN : float
-        Crank–Nicolson weighting (0.5 = semi-implicit).
-
-    Returns
-    -------
-    res_T : array (nz, nx)
-        Heat equation residual.
-    qT_adv : tuple (qx_adv, qz_adv)
-        Advective heat fluxes in x/z direction.
-    qT_cond : tuple (qx_cond, qz_cond)
-        Conductive heat fluxes in x/z direction.
-    """ 
-    # ================================  RICHARDS EQUATION  ==================================
-    # Capillary head
-    h_c_old = jnp.maximum(Z - htot_old, 0.0)
-    h_c_new = jnp.maximum(Z - htot_new, 0.0)
-
-    nz, nx = X.shape
-    dz = jnp.abs(Z[1, 0] - Z[0, 0]) 
-    dx_tilde = jnp.abs(X[0, 1] - X[0, 0])  
-    dx = jnp.sqrt(jnp.square(dx_tilde)+ jnp.square(dz))
-
-    # Effective saturation
-    Se_old = petro.effsat(h_c_old, alpha, N)
-    Se_new = petro.effsat(h_c_new, alpha, N)
-
-    # Volumetric water content
-    Theta_old = Theta_r + (Theta_s - Theta_r) * Se_old
-    Theta_new = Theta_r + (Theta_s - Theta_r) * Se_new
-
-    # Phase separation
-    theta_i_new, theta_l_new = petro.phase_separation(Theta_new, Theta_r, T_new, T_freeze=0.0, omega=1.0)
-    theta_i_old, theta_l_old = petro.phase_separation(Theta_old, Theta_r, T_old, T_freeze=0.0, omega=1.0)
-    
-    Se_old = (theta_l_old-Theta_r) / (Theta_s - Theta_r)
-    Se_new = (theta_l_new-Theta_r) / (Theta_s - Theta_r)
-
-    # Relative permeability
-    krel_new = petro.relperm(Se_new, N)
-
-    # Initial residual (without div(q))
-    res_rich = Theta_new - Theta_old
-
-    # Flux arrays
-    qx = jnp.zeros((nz, nx + 1))
-    qz = jnp.zeros((nz + 1, nx))
-
-#     # maximum infiltration rate
-    S_effective = (Theta_s[-1,:] - theta_i_new[-1,:] - Theta_r[-1,:]) / (Theta_s[-1,:] - Theta_r[-1,:])
-    Ksat_effective = Ksat[-1,:] * petro.relperm(S_effective, N[-1,:]) # Ksat * Se_new
-    q_infil_max = Ksat_effective
-
-   # maximum evaporation rate based on available water (see Hydrogeosphere)
-    q_evap_max = -Ksat_effective
-    scaling = petro.evap_limit(Se_new[-1,:])
-    q_infil = jnp.where(
-        q_inf >= 0,
-        jnp.minimum(q_inf, q_infil_max),
-        jnp.maximum(q_inf,q_evap_max*scaling)
-    )
-    # q_infil = q_inf
-    # q_infil = jnp.where(abs(q_infil)<1e-15, 0.0, q_infil)
-    # Excess water becomes runoff
-    # q_runoff = jnp.maximum(q_inf - q_infil, 0.0)
-    
-    # Apply surface flux BC 
-    res_rich = res_rich.at[-1, :].add(-q_infil/ dz * dt)
-    qz = qz.at[-1, :].set(-q_infil)
-    
-    # Update fluxes                  
-    res_v, qz = vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, dt)
-    res_h, qx = horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, Z, dt)
-    res_rich += res_v + res_h
-    # print("richard residual", jnp.max(jnp.linalg.norm(res_rich, ord=jnp.inf)))
-    # Average face fluxes
-    qx_centered = 0.5 * (qx[:, :-1] + qx[:, 1:])
-    qz_centered = 0.5 * (qz[:-1, :] + qz[1:, :])
-
-    # ================================  HEAT EQUATION  ==================================
-    # Effective heat capacity and conductivity 
-
-    C_eff_new = petro.effective_heatcapacity(theta_l_new, theta_i_new, Theta_s)
-    C_eff_old = petro.effective_heatcapacity(theta_l_old, theta_i_old, Theta_s)
-
-    lambda_eff_new = petro.effective_thermalconductivity(theta_l_new, theta_i_new, Theta_s)
-    
-    # Temporal storage term 
-    storage_new = (C_eff_new * T_new - rho_i * H_f * theta_i_new)/dt
-    storage_old = (C_eff_old * T_old - rho_i * H_f * theta_i_old)/dt
-
-    res_T = storage_new - storage_old
-
-    # Convective and conductive flux terms
-    res_h_cond = horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde)
-    res_v_cond = vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde)
-    res_h_conv = horizontal_convflux_update(qx, c_l, T_new, rho_l, dz)
-    res_v_conv = vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde)
-    
-    res_T += res_v_conv + res_h_conv + res_h_cond + res_v_cond 
-    res_T /= 1e6
-    # Combine residuals
-    res_total = jnp.concatenate([res_rich.ravel(), res_T.ravel()])
-    return res_total, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_new, theta_i_new
-
 eps64 = jnp.finfo(jnp.float64).eps
 @partial(jax.jit,static_argnames=(['rho_i', 'H_f', 'rho_l', 'c_l', 'nx', 'nz', 'dx', 'dz']))
-def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt, soil,soil_type, Theta_s,Theta_r, alpha, N, Ksat, rho_i, H_f, rho_l, c_l, Z, nz, nx, dx, dx_tilde, dz, normres=1e-4):
+def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt, 
+                             soil,soil_type, Theta_s,Theta_r, alpha, N, Ksat, 
+                             rho_i, H_f, rho_l, c_l, Z, nz, nx, dx, dx_tilde, dz, normres=1e-4):
     """
     Calculates the residual of the heat equation with phase change.
     Parameters
@@ -293,7 +26,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     C_eq : array or float
         Equivalent volumetric heat capacity [J/(m³ K)].
     lambda_eq : array or float
-        Effective thermal dtconductivity [W/(m K)].
+        Effective thermal dtconducnormrestivity [W/(m K)].
     H_f : float
         Latent heat of fusion [J/kg].
     theta_i_new, theta_i_old : array
@@ -337,7 +70,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
 
     # Relative permeability
     krel_new =jnp.where(soil==1, soil_type[1]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape), soil_type[2]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape)) #jnp.where(T_new<=0, jnp.where(soil==1, soil_type[1]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape), soil_type[2]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape)), petro.relperm(Se_new, N))
-    krel_new = jnp.clip(krel_new,eps64,1)
+    krel_new = jnp.clip(krel_new,10*eps64,1)
     # Storage term in residuum
     res_rich = (Theta_new - Theta_old)/dt
 
@@ -356,7 +89,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     # q_infil according to limits defined above
     q_inf_capped = jnp.where(
         q_inf >= 0,
-        jnp.minimum(q_inf,q_infil_max),
+        q_inf,#jnp.minimum(q_inf,q_infil_max),
         jnp.maximum(q_inf,q_evap_max*scaling)
     )
 
@@ -412,7 +145,8 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     res_h_conv = horizontal_convflux_update(qx, c_l, T_new, rho_l, dx)
     res_v_conv = vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde)
 
-    res_T += res_h_conv + res_v_conv +res_v_cond + res_h_cond 
+    res_T += res_h_conv + res_v_conv +res_v_cond + res_h_cond
+
     # combine residuals
     res_total = jnp.concatenate([res_rich.ravel(), res_T.ravel()])
     return res_total, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_new, theta_i_new
@@ -506,7 +240,9 @@ def horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde):
 
 def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde):
     """
-    Update horizontal conductive heat fluxes and residuals.
+    Update vertical conductive heat fluxes and residuals.
+    Robin-type surface flux: T_surface (air) is treated as a ghost cell
+    at half a cell distance (dz/2) from the top cell center.
     """
     res = jnp.zeros_like(T_new)
     # Calculate the average thermal conductivity between cells
@@ -516,9 +252,7 @@ def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde)
     # Internal fluxes over cell faces
     q = -lambda_int_new * diff_T_new / dz
 
-    # Flux from surface with T_surface being the air temperature 
-    # lambda_air = 0.025
-    # lambda_surf = 2*lambda_eff_new[-1,:]*lambda_air/(lambda_air+lambda_eff_new[-1,:])
+    # Flux from surface ghost cell (air at T_surface, distance dz/2)
     q_surf = -(lambda_eff_new[-1,:]*(T_surface-T_new[-1,:])/(dz/2))
 
     # Calculate convective term in residual
@@ -527,7 +261,7 @@ def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde)
     # top fluxes
     res = res.at[:-1, :].add(q * dx_tilde / (dz*dx))
     # surface flux
-    res = res.at[-1,:].add(q_surf)# * dx_tilde / (dz*dx))
+    res = res.at[-1, :].add(q_surf * dx_tilde / (dz*dx))
     return res
 
 def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde):
