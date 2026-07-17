@@ -89,7 +89,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     # q_infil according to limits defined above
     q_inf_capped = jnp.where(
         q_inf >= 0,
-        q_inf,#jnp.minimum(q_inf,q_infil_max),
+        jnp.minimum(q_inf,q_infil_max),
         jnp.maximum(q_inf,q_evap_max*scaling)
     )
 
@@ -210,6 +210,7 @@ def horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, 
     #   h_c_new >0 -> set flux to zero (no flow). 
     # Saturated: 
     #   flux based on the head difference between the boundary cell and the atmosphere, where htot=Z.
+    
     q_r = jnp.where(h_c_new[:,-1]>0,jnp.zeros_like(Ksat[:,-1]),(htot_new[:,-1]-Z[:,-1])*2/dx*Ksat[:,-1])
 
     # set q_r in q_x

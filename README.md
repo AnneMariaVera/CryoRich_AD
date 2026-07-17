@@ -1,4 +1,4 @@
-# FrozenSoil_AD
+# CryoRich_AD
 
 Author
 ------

@@ -203,7 +203,7 @@ class Geom():
         self.rho_a = rho_a
         self.H_f = H_f
     
-    def set_surface_bc(self, t_bc, q_inf, T_surface):
+    def set_surface_bc(self, t_bc, q_inf, T_surface,method = "cubic2"):
         """
         Set boundary conditions for the simulation.
         The infiltration and Temperature data points are interpolated for the similation time.
@@ -213,8 +213,8 @@ class Geom():
         self.t_bc = t_bc
         self.q_inf = q_inf
         self.T_surface = T_surface
-        self.T_surface_interp = ipx.Interpolator1D(t_bc, T_surface,method="cubic2")
-        self.q_inf_interp = ipx.Interpolator1D(t_bc, q_inf,method="cubic2")
+        self.T_surface_interp = ipx.Interpolator1D(t_bc, T_surface,method=method)
+        self.q_inf_interp = ipx.Interpolator1D(t_bc, q_inf,method=method)
 
     def set_newton_params(self, restol_rich=1e-4, restol_T=1e-2, max_iter=10, min_iter=5):
         """
