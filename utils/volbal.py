@@ -80,7 +80,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     h_eff = petro_cap.h_from_S(S_effective, alpha[-1,:], N[-1,:])
     Ksat_effective = Ksat[-1,:] * soil_type[1]["k_rel_interp"](h_eff, T_new[-1,:])
 
-    q_infil_max = Ksat_effective
+    # q_infil_max = Ksat_effective
     q_evap_max = -Ksat_effective
     
     # Evaporation is limited by saturation (see Hydrogeosphere)
@@ -89,7 +89,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     # q_infil according to limits defined above
     q_inf_capped = jnp.where(
         q_inf >= 0,
-        jnp.minimum(q_inf,q_infil_max),
+        q_inf,#jnp.minimum(q_inf,q_infil_max),
         jnp.maximum(q_inf,q_evap_max*scaling)
     )
 
