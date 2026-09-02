@@ -9,7 +9,6 @@ from scipy.interpolate import griddata
 from scipy.integrate import cumulative_trapezoid
 import cmocean.cm as cmo
 import matplotlib.dates as mdates
-import matplotlib as mpl
 from matplotlib.colors import ListedColormap
 from datetime import timedelta
 import jax.numpy as jnp
@@ -25,16 +24,12 @@ green = (30/255, 136/255, 229/255)
 blue = (0, 77/255, 46/255)
 
 N = 256
-
 start = np.array([168, 148, 125]) / 255
 end   = np.array([250, 252, 255]) / 255      # icy white with a bit more blue
 
 t = np.linspace(0, 1, N)
-t = t
-
 vals = np.ones((N, 4))
 vals[:, :3] = (1 - t)[:, None] * start + t[:, None] * end
-
 icy_soil = ListedColormap(vals)
 
 cm = 1/2.54  # centimeters in inches
@@ -56,20 +51,20 @@ def parametrization_style(parametrization):
 
 def parametrization_label(parametrization):
     return {
-        "drying": "drying assumption",
-        "permaFoam_omega10": r"impedance factor, $\Omega=10$",
-        "permaFoam_omega50": r"impedance factor, $\Omega=50$",
-        "cap": "capillary bundle model",
-        "drying_omega10": r"drying assumption, with imp. factor $\Omega=10$",
+        "drying": "(A) drying assumption",
+        "permaFoam_omega10": r"(B) impedance factor, $\Omega=10$",
+        "permaFoam_omega50": r"(C) impedance factor, $\Omega=50$",
+        "cap": "(D) capillary bundle model",
+        "drying_omega10": r"(E) drying assumption, with imp. factor $\Omega=10$",
     }.get(parametrization)
 
 def parametrization_label_leg(parametrization):
     return {
-        "drying": "drying",
-        "permaFoam_omega10": r"imp. factor, $\Omega=10$",
-        "permaFoam_omega50": r"imp. factor, $\Omega=50$",
-        "cap": "cap. bundle model",
-        "drying_omega10": r"drying, imp. factor $\Omega=10$",
+        "drying": "(B) drying assumption",
+        "permaFoam_omega10": r"(C) impedance factor, $\Omega=10$",
+        "permaFoam_omega50": r"(D) impedance factor, $\Omega=50$",
+        "cap": "(A) capillary bundle model",
+        "drying_omega10": r"(E) drying assumption, with imp. factor $\Omega=10$",
     }.get(parametrization)
 
 def plot_grid(geom):
@@ -233,6 +228,8 @@ def _plot_flux_comparison(dbs, flux_fn, parametrisations, quantity, relative, yl
         ax.plot(times_days, series[quantity_index-1], linewidth=2,
                label=parametrization_label_leg(parametrization) or parametrization,
                color=style["color"], linestyle=style["linestyle"])
+        print("values at the end of the simulation for",parametrization)
+        print(quantity,jnp.nanmax(series[quantity_index-1]))
 
     ax.spines[['top', 'right']].set_visible(False)
     ax.spines['left'].set_position(('data', 0))
@@ -707,7 +704,7 @@ def plot_krel_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_
 
     fig, ax = plt.subplots(figsize=figsize, subplot_kw={"projection": "3d"})
     ax.view_init(elev=10, azim=-20, roll=0)
-    ax.plot_surface(jnp.log10(X), Y, Z, cmap=cmo.deep)
+    ax.plot_surface(jnp.log10(X), Y, Z, cmap=cmo.amp)
     ax.set_xticks([-2, -1, 0])
     ax.set_xticklabels([f'$10^{{{i}}}$' for i in range(-2, 1)])
     ax.set_zticks([-15, -10, -5, 0])
@@ -743,7 +740,7 @@ def plot_theta_l_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, tit
 
     fig, ax = plt.subplots(figsize=figsize, subplot_kw={"projection": "3d"})
     ax.view_init(elev=10, azim=-20, roll=0)
-    ax.plot_surface(np.log10(X), Y, Z, cmap=cmo.deep)
+    ax.plot_surface(np.log10(X), Y, Z, cmap="Blues")
     
     ax.set_yticks([-10, -5, 0, 5,10])
     ax.set_xticks([-2, -1, 0])
