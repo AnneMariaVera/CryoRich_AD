@@ -155,18 +155,34 @@ class Geom():
         """
         Set soil type for the simulation.
         soil = 2D array of shape (nz, nx) with integer values representing soil types.
+        soil_type = dict mapping each integer soil type id present in `soil` to its properties;
+        any number of soil types is supported (including a single one).
         """
         assert soil.shape == self.X.shape, f"soil must be of shape ({self.nz}, {self.nx})"
         assert isinstance(soil_type, dict), "soil_type must be a dictionary mapping integer soil types to their properties."
         self.soil = soil
         self.soil_type = soil_type
 
-        # Create array with soil parameters based on soil type
-        self.Theta_s = jnp.where(self.soil==1, self.soil_type[1]["Theta_s"], self.soil_type[2]["Theta_s"])
-        self.Theta_r = jnp.where(self.soil==1, self.soil_type[1]["Theta_r"], self.soil_type[2]["Theta_r"])
-        self.alpha = jnp.where(self.soil==1, self.soil_type[1]["alpha"], self.soil_type[2]["alpha"])
-        self.N = jnp.where(self.soil==1, self.soil_type[1]["N"], self.soil_type[2]["N"])
-        self.Ksat = jnp.where(self.soil==1, self.soil_type[1]["Ksat"], self.soil_type[2]["Ksat"])
+        # Create array with soil parameters based on soil type, generic over however many
+        # soil type ids are present in soil_type (built up by overlaying jnp.where per id).
+        soil_ids = list(soil_type.keys())
+
+        def build_param(key, default=None):
+            # default=None means the key is required (KeyError if missing); otherwise missing
+            # keys fall back to `default` -- used for Theta_WP so soil_type dicts that predate
+            # the evapotranspiration sink (PET=0 by default in set_surface_bc, making the sink
+            # a no-op regardless of Theta_WP) keep working unchanged.
+            get = (lambda sid: soil_type[sid][key])
+            param = jnp.full(soil.shape, get(soil_ids[0]))
+            for soil_id in soil_ids[1:]:
+                param = jnp.where(soil == soil_id, get(soil_id), param)
+            return param
+
+        self.Theta_s = build_param("Theta_s")
+        self.Theta_r = build_param("Theta_r")
+        self.alpha = build_param("alpha")
+        self.N = build_param("N")
+        self.Ksat = build_param("Ksat")
 
     def set_cap_distribution(self, nbins=300, sigma_w = 7.27e-2):
         """
@@ -181,7 +197,7 @@ class Geom():
         self.dtheta = dtheta[0,0]
         self.theta_steps = theta_steps[0,0,:]
 
-    def set_thermal_params(self, rho_l = 1000, rho_i = 917, rho_s = 2650, rho_a = 1200, c_s = 800, c_l = 4180, c_i = 2100, c_a = 1000, H_f = 3.34e5):
+    def set_thermal_params(self, rho_l = 1000, rho_i = 917, rho_s = 2650, rho_a = 1.1, c_s = 800, c_l = 4180, c_i = 2100, c_a = 1000, lambda_l = 0.6, lambda_i = 2.2, lambda_s = 2.5, lambda_a = 0.023,H_f = 3.34e5):
         """
         Set thermal parameters for the simulation.
         c_l : specific heat capacity liquid water [J/kg/K]
@@ -195,12 +211,16 @@ class Geom():
         """
         self.c_l = c_l
         self.rho_l = rho_l
+        self.lambda_l = lambda_l
         self.c_s = c_s
         self.rho_s = rho_s
+        self.lambda_s = lambda_s
         self.c_i = c_i
         self.rho_i = rho_i
+        self.lambda_i = lambda_i
         self.c_a = c_a
         self.rho_a = rho_a
+        self.lambda_a = lambda_a
         self.H_f = H_f
     
     def set_surface_bc(self, t_bc, q_inf, T_surface,method = "cubic2"):
@@ -308,8 +328,11 @@ class Geom():
         # dt_old = self.dt
         
         # Coupled residual function for Newton-Raphson solver. 
-        def residual_func_cap_bundle(y_new, y_old, dt, soil, soil_type, Theta_s,Theta_r, alpha, N, Ksat, 
-                                     rho_i, H_f, rho_l, c_l, q_inf, T_surface, Z,  nz, nx, dx, dx_tilde, dz):
+        def residual_func_cap_bundle(y_new, y_old, dt, soil, soil_type, Theta_s,Theta_r, alpha, N, Ksat, H_f, 
+                                     rho_i, rho_l, rho_a, rho_s, 
+                                     c_i, c_l, c_a, c_s,
+                                     lambda_i, lambda_l, lambda_a, lambda_s,
+                                     q_inf, T_surface, Z,  nz, nx, dx, dx_tilde, dz):
             """
             Coupled residual function for [htot, T].
             y_new = [htot_new.ravel(), T_new.ravel()]
@@ -328,8 +351,11 @@ class Geom():
             # Head and Heat residual (advection uses fluxes from h) 
             res_total, _, _, _, _, _, _, _ = volbal_cappillary_bundle(
                     T_new, T_old, htot_new, htot_old, q_inf, T_surface, 
-                    dt, soil, soil_type, Theta_s,Theta_r, alpha, N, Ksat, rho_i, H_f, 
-                    rho_l, c_l, Z,  nz, nx, dx, dx_tilde, dz
+                    dt, soil, soil_type, Theta_s,Theta_r, alpha, N, Ksat, H_f, 
+                    rho_i, rho_l, rho_a, rho_s, 
+                    c_i, c_l, c_a, c_s,
+                    lambda_i, lambda_l, lambda_a, lambda_s,  
+                    Z,  nz, nx, dx, dx_tilde, dz
             )
             return res_total
         
@@ -341,8 +367,11 @@ class Geom():
 
         # save initial fluxes
         _, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_s, theta_i_s = volbal_cappillary_bundle(T, T, htot, htot, self.q_inf_interp(t)*jnp.ones((self.nx,)), self.T_surface_interp(t)*jnp.ones((self.nx,)), 
-                                                                                                       self.dt, self.soil, self.soil_type, self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat,
-                                                                                                       self.rho_i, self.H_f, self.rho_l, self.c_l,self.Z, self.nz, self.nx, self.dx, self.dx_tilde, self.dz)
+                                                                                                       self.dt, self.soil, self.soil_type, self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat, self.H_f, 
+                                                                                                       self.rho_i, self.rho_l, self.rho_a, self.rho_s, 
+                                                                                                       self.c_i, self.c_l, self.c_a, self.c_s,
+                                                                                                       self.lambda_i, self.lambda_l, self.lambda_a, self.lambda_s, 
+                                                                                                       self.Z, self.nz, self.nx, self.dx, self.dx_tilde, self.dz)
         qz_array = [qz]
         qx_array = [qx]
         qz_centered_array = [qz_centered]
@@ -419,7 +448,10 @@ class Geom():
                                                                                                                 
                 _, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_s, theta_i_s = volbal_cappillary_bundle(T_new, T_old,
                                                                                                                htot_new, htot_old, self.q_inf_interp(t)*jnp.ones((self.nx,)), self.T_surface_interp(t)*jnp.ones((self.nx,)), dt_solved,
-                                                                                                               self.soil, self.soil_type, self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat, self.rho_i, self.H_f, self.rho_l, self.c_l,
+                                                                                                               self.soil, self.soil_type, self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat, self.H_f,
+                                                                                                               self.rho_i, self.rho_l, self.rho_a, self.rho_s,
+                                                                                                               self.c_i, self.c_l, self.c_a, self.c_s,
+                                                                                                               self.lambda_i, self.lambda_l, self.lambda_a, self.lambda_s,
                                                                                                                self.Z, self.nz, self.nx, self.dx, self.dx_tilde, self.dz)
                 h_total.append(htot_new)
                 h_c_total.append(h_c)
@@ -466,8 +498,10 @@ class Geom():
 
         res = residual_func(
             y_new, y_old, dt, self.soil, self.soil_type,
-            self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat,
-            self.rho_i, self.H_f, self.rho_l, self.c_l,
+            self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat,self.H_f,
+            self.rho_i, self.rho_l, self.rho_a, self.rho_s, 
+            self.c_i, self.c_l, self.c_a, self.c_s,
+            self.lambda_i, self.lambda_l, self.lambda_a, self.lambda_s,
             self.q_inf_interp(t)*jnp.ones((self.nx,)),
             self.T_surface_interp(t)*jnp.ones((self.nx,)),
             self.Z, self.nz, self.nx, self.dx, self.dx_tilde, self.dz
@@ -475,8 +509,10 @@ class Geom():
 
         J = jacobian_func(
             y_new, y_old, dt, self.soil, self.soil_type,
-            self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat,
-            self.rho_i, self.H_f, self.rho_l, self.c_l,
+            self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat, self.H_f, 
+            self.rho_i, self.rho_l, self.rho_a, self.rho_s, 
+            self.c_i, self.c_l, self.c_a, self.c_s,
+            self.lambda_i, self.lambda_l, self.lambda_a, self.lambda_s,
             self.q_inf_interp(t)*jnp.ones((self.nx,)),
             self.T_surface_interp(t)*jnp.ones((self.nx,)),
             self.Z,  self.nz, self.nx, self.dx, self.dx_tilde, self.dz
@@ -500,8 +536,10 @@ class Geom():
 
             res_trial = residual_func(
                 y_trial, y_old, dt, self.soil, self.soil_type,
-                self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat,
-                self.rho_i, self.H_f, self.rho_l, self.c_l,
+                self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat,self.H_f, 
+                self.rho_i, self.rho_l, self.rho_a, self.rho_s, 
+                self.c_i, self.c_l, self.c_a, self.c_s,
+                self.lambda_i, self.lambda_l, self.lambda_a, self.lambda_s,
                 self.q_inf_interp(t)*jnp.ones((self.nx,)),
                 self.T_surface_interp(t)*jnp.ones((self.nx,)),
                 self.Z,  self.nz, self.nx, self.dx, self.dx_tilde, self.dz

@@ -1,0 +1,355 @@
+import jax.numpy as jnp
+import jax
+import utils.petrophysic as petro
+import utils.petrophysics_capillaryBundles as petro_cap
+from functools import partial
+
+eps64 = jnp.finfo(jnp.float64).eps
+
+
+def normal_gradient_tilted_face(diff_col, dz, s, Gxi_face):
+    """
+    Face-normal gradient on a top/bottom face of the sheared mesh (Z = Z_flat + s*X).
+
+    Top/bottom faces are tilted, their upward unit normal is (-s, 1)/sqrt(1+s^2).
+    ``diff_col/dz`` is the exact d/dz between two vertically stacked cell centers,
+    ``Gxi_face`` the along-row derivative d/dxi at the face (rows follow the shear, so
+    d/dxi = d/dx + s*d/dz).
+
+    With d/dx = d/dxi - s*d/dz:
+        dH/dn = (dH/dz - s*dH/dx)/sqrt(1+s^2)
+              = ((1+s^2)*dH/dz - s*dH/dxi)/sqrt(1+s^2)
+    """
+    return ((1 + s**2) * diff_col / dz - s * Gxi_face) / jnp.sqrt(1 + s**2)
+
+
+def normal_gradient_vertical_face(diff_row, dx, s, Gz_face):
+    """
+    Face-normal gradient d/dx on a vertical left/right face of the sheared mesh.
+
+    Neighbouring cell centers in a row are offset by (dx, s*dx), so diff_row/dx is
+    d/dxi = d/dx + s*d/dz. The cross part s*d/dz is removed here, leaving the gradient
+    normal to the (vertical) face.
+    """
+    return diff_row / dx - s * Gz_face
+
+def combine_by_soil(soil, soil_type,soil_ids,interp_key, h_c, T):
+        field = soil_type[soil_ids[0]][interp_key](h_c.flatten(), T.flatten()).reshape(h_c.shape)
+        for soil_id in soil_ids[1:]:
+            field = jnp.where(soil == soil_id, soil_type[soil_id][interp_key](h_c.flatten(), T.flatten()).reshape(h_c.shape), field)
+        return field
+
+@partial(jax.jit,static_argnames=(['rho_i', 'rho_l', 'rho_a', 'rho_s', 
+                                    'c_i', 'c_l', 'c_a', 'c_s',
+                                    'lambda_i', 'lambda_l', 'lambda_a', 'lambda_s',
+                                    'H_f', 'nx', 'nz', 'dx', 'dz']))
+def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt, 
+                             soil,soil_type, Theta_s,Theta_r, alpha, N, Ksat, H_f,
+                             rho_i, rho_l, rho_a, rho_s, 
+                             c_i, c_l, c_a, c_s,
+                             lambda_i, lambda_l, lambda_a, lambda_s, 
+                             Z, nz, nx, dx, dx_tilde, dz):
+    """
+    Calculates the residual of the heat equation with phase change.
+    Parameters
+    ----------
+    T_new, T_old : array (nz, nx)
+        Temperature field at t+1 and t.
+    htot_new, htot_old : array (nz, nx)
+        Hydraulic head fields, used for advection.
+    qx, qz : array
+        Darcy fluxes at faces (m/s), shape (nz, nx+1) and (nz+1, nx).
+    rho_l : float
+        Density of liquid water [kg/m³].
+    C_l : float
+        Specific heat of liquid water [J/(kg K)].
+    C_eq : array or float
+        Equivalent volumetric heat capacity [J/(m³ K)].
+    lambda_eq : array or float
+        Effective thermal dtconducnormrestivity [W/(m K)].
+    H_f : float
+        Latent heat of fusion [J/kg].
+    theta_i_new, theta_i_old : array
+        Volumetric ice content at t+1 and t.
+    X, Z : mesh coordinate arrays.
+    dt : float
+        Time step [s].
+    CN : float
+        Crank–Nicolson weighting (0.5 = semi-implicit).
+
+    Returns
+    -------
+    res_T : array (nz, nx)
+        Heat equation residual.
+    qT_adv : tuple (qx_adv, qz_adv)
+        Advective heat fluxes in x/z direction.
+    qT_cond : tuple (qx_cond, qz_cond)
+        Conductive heat fluxes in x/z direction.
+    """ 
+    soil_ids = list(soil_type.keys())
+
+
+    # Mesh shear (dZ/dX along a row). s = 0 recovers the flat-mesh discretisation exactly.
+    s = (Z[0, 1] - Z[0, 0]) / dx
+
+    # ================================  RICHARDS EQUATION  ==================================
+    # Capillary head, here we define that hc is greater 0 
+    h_c_old = jnp.maximum(Z - htot_old, 0.0)
+    h_c_new = jnp.maximum(Z - htot_new, 0.0)    
+
+    # Saturation and water content
+    Se_old = petro_cap.S_from_h(h_c_old,alpha,N)
+    Theta_old = Se_old * (Theta_s - Theta_r) + Theta_r
+    
+    Se_new = petro_cap.S_from_h(h_c_new,alpha,N)
+    Theta_new = Se_new * (Theta_s - Theta_r) + Theta_r
+
+    # Phase separation between ice and liquid, 
+    # Clipping to ensure that both water content and ice content are between residual water content and porosity. Deviations could happen due to interpolation errors in theta_l and theta_i
+
+    theta_l_old = combine_by_soil(soil, soil_type, soil_ids, "theta_l_interp", h_c_old, T_old)
+    theta_l_new = combine_by_soil(soil, soil_type, soil_ids, "theta_l_interp", h_c_new, T_new)
+    # theta_l_old = jnp.clip(jnp.where(soil==1, soil_type[1]["theta_l_interp"](h_c_old.flatten(), T_old.flatten()).reshape(h_c_old.shape), soil_type[2]["theta_l_interp"](h_c_old.flatten(), T_old.flatten()).reshape(h_c_old.shape)),Theta_r,Theta_old) #jnp.where(T_old<=0,jnp.clip(jnp.where(soil==1, soil_type[1]["theta_l_interp"](h_c_old.flatten(), T_old.flatten()).reshape(h_c_old.shape), soil_type[2]["theta_l_interp"](h_c_old.flatten(), T_old.flatten()).reshape(h_c_old.shape)),Theta_r,Theta_old),Theta_old)
+    # theta_l_new = jnp.clip(jnp.where(soil==1, soil_type[1]["theta_l_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape), soil_type[2]["theta_l_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape)),Theta_r,Theta_new) #jnp.where(T_new<=0,jnp.clip(jnp.where(soil==1, soil_type[1]["theta_l_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape), soil_type[2]["theta_l_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape)),Theta_r,Theta_new),Theta_new)
+
+    theta_i_old = jnp.clip(Theta_old - theta_l_old, 0, Theta_s)
+    theta_i_new = jnp.clip(Theta_new - theta_l_new, 0, Theta_s)
+
+    # Relative permeability
+    # krel_new =jnp.where(soil==1, soil_type[1]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape), soil_type[2]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape)) #jnp.where(T_new<=0, jnp.where(soil==1, soil_type[1]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape), soil_type[2]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape)), petro.relperm(Se_new, N))
+    krel_new = combine_by_soil(soil, soil_type, soil_ids, "k_rel_interp", h_c_new, T_new)
+    krel_new = jnp.clip(krel_new,10*eps64,1)
+
+    # Storage term in residuum
+    res_rich = (Theta_new - Theta_old)/dt
+
+    # Initialise flux arrays containing fluxes over cell boundaries
+    qx = jnp.zeros((nz, nx + 1)) 
+    qz = jnp.zeros((nz + 1, nx))
+    q_runoff = jnp.zeros((nx,))  # runoff flux at the right boundary
+
+    # ........................  Richards equation flux updates  .........................
+    # Cross derivatives needed to turn the centre-to-centre differences into true
+    # face-normal gradients on the sheared mesh. They are lagged to the old time level
+    # (deferred correction) so the Jacobian keeps its 5-point stencil.
+    Gz_h_old = jnp.gradient(htot_old, dz, axis=0)   # d/dz along a column (exact)
+    Gxi_h_old = jnp.gradient(htot_old, dx, axis=1)  # d/dxi along a (sheared) row
+
+    # Update fluxes
+    res_v, qz = vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, s, Gxi_h_old)
+    hc_bc = jnp.maximum(Z[:, -1] + s * dx / 2, 0.0)
+    krel_boundary = combine_by_soil(soil,soil_type,soil_ids,"k_rel_interp", hc_bc, T_new[:, -1])
+    res_h, qx = horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, Z, s, Gz_h_old,krel_boundary)
+    res_rich += res_v + res_h
+
+    # Flux at cell center, assumes equispaced grid.
+    qx_centered = 0.5 * (qx[:, :-1] + qx[:, 1:])
+    qz_centered = 0.5 * (qz[:-1, :] + qz[1:, :])
+
+    # ================================  HEAT EQUATION  ==================================
+    # Effective heat capacity and conductivity 
+    C_eff_new = petro.effective_heatcapacity(theta_l_new, theta_i_new, Theta_s, rho_l=rho_l,rho_i=rho_i,rho_s=rho_s,rho_a=rho_a, 
+                     c_s=c_s, c_l=c_l, c_i=c_i, c_a=c_a)
+    C_eff_old = petro.effective_heatcapacity(theta_l_old, theta_i_old, Theta_s,rho_l=rho_l,rho_i=rho_i,rho_s=rho_s,rho_a=rho_a,
+                     c_s=c_s, c_l=c_l, c_i=c_i, c_a=c_a)
+
+    lambda_eff_new = petro.effective_thermalconductivity(theta_l_new, theta_i_new, Theta_s,lambda_s=lambda_s, lambda_l=lambda_l, lambda_i=lambda_i, lambda_a=lambda_a)
+
+    # Temporal storage term 
+    storage_new = (C_eff_new * T_new - rho_i * H_f * theta_i_new)
+    storage_old = (C_eff_old * T_old - rho_i * H_f * theta_i_old)
+    res_T = (storage_new - storage_old)/dt
+
+    # Convective and conductive flux terms
+    res_h_cond = horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde, s,
+                                            jnp.gradient(T_old, dz, axis=0))
+    res_v_cond = vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde, s,
+                                          jnp.gradient(T_old, dx, axis=1))
+    res_h_conv = horizontal_convflux_update(qx, c_l, T_new, rho_l, dx)
+    res_v_conv = vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde)
+
+    res_T += res_h_conv + res_v_conv +res_v_cond + res_h_cond
+
+    # combine residuals
+    res_total = jnp.concatenate([res_rich.ravel(), res_T.ravel()])
+    return res_total, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_new, theta_i_new
+
+def vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, s, Gxi_h):
+    """
+    Update vertical fluxes and residuals.
+    Allows water table above surface - convergence handled in residual via capillary bundle terms.
+
+    On the sheared mesh the top/bottom faces are tilted, so the flux is driven by the
+    face-normal gradient, not by the plain vertical centre difference. The cross term
+    (along-row derivative Gxi_h) is part of the implicit solve.
+    """
+    # initialize res vector
+    res = jnp.zeros_like(htot_new)
+
+    # Calculate the average hydraulic conductivity between cells
+    Kint = 2 * Ksat[:-1,:]* Ksat[1:, :] / (Ksat[:-1, :] + Ksat[1:, :])
+
+    # Head difference in z direction
+    diff_h_new = htot_new[1:, :] - htot_new[:-1, :] 
+
+    # Face-normal gradient (upward normal of the tilted face)
+    Gxi_face = 0.5 * (Gxi_h[:-1, :] + Gxi_h[1:, :])
+    grad_n = normal_gradient_tilted_face(diff_h_new, dz, s, Gxi_face)
+
+    # Calculate relative permeability with upwinding scheme (on the corrected gradient)
+    kr_new = jnp.where(grad_n<0, krel_new[:-1, :], krel_new[1:, :])
+
+    # Internal fluxes over cell faces
+    q_val = -Kint * kr_new * grad_n
+    qz = qz.at[1:-1,:].set(q_val)
+    
+    # Geometric factor (integration of flux over )
+    geofac = dx_tilde / (dz * dx)
+
+    # Add flux from top cell to bottom cell
+    res = res.at[:-1, :].add(q_val * geofac)
+    # Opposite: substract flux from bottom to top cell
+    res = res.at[1:, :].add(-q_val * geofac)
+    return res, qz
+
+def horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, Z, s, Gz_h, krel_boundary):
+    """
+    Update horizontal fluxes and residuals.
+
+    Left/right faces are vertical, so the driving gradient is dH/dx. Neighbouring centres in
+    a row are offset by (dx, s*dx), so the raw row difference also contains s*dx*dH/dz; that
+    part is removed here, using the implicit dH/dz in Gz_h.
+    """
+    # initialize res vector
+    res = jnp.zeros_like(htot_new)
+
+    # Calculate the average hydraulic conductivity between cells
+    Kint = 2 * Ksat[:, 1:] * Ksat[:, :-1] / (Ksat[:, 1:] + Ksat[:, :-1])
+
+    # Head difference in x direction
+    diff_h_new = (htot_new[:, 1:] - htot_new[:, :-1]) 
+
+    # Face-normal gradient (normal of the vertical face is (1,0))
+    Gz_face = 0.5 * (Gz_h[:, :-1] + Gz_h[:, 1:])
+    grad_n = normal_gradient_vertical_face(diff_h_new, dx, s, Gz_face)
+
+    # Calculate relative permeability with upwinding scheme (on the corrected gradient)
+    kr_new = jnp.where(grad_n>0, krel_new[:, 1:], krel_new[:, :-1])
+
+    # Internal fluxes over cell faces
+    q_val = -Kint * kr_new * grad_n
+
+    # Here the geometric factor is dz/(dz*dx)=1/dx
+    qx = qx.at[:, 1:-1].set(q_val)
+    res = res.at[:, :-1].add(q_val / dx)
+    res = res.at[:, 1:].add(-q_val / dx)
+
+    # river boundary condition with constant h_riv = 0 for the validation test case 
+    # Downslope Dirichlet face (H=0): the face-normal distance to the cell center is dx/2, and the
+    # cross term uses the along-face derivative of the prescribed head, which is zero for constant H.
+    diff_h_bc = 0.0 - htot_new[:, -1]
+    q_r = -Ksat[:, -1] * krel_boundary * diff_h_bc * 2 / dx
+
+    # set q_r in q_x
+    qx = qx.at[:, -1].set(q_r)
+
+    # add seepage flux to residuum
+    res = res.at[:, -1].add(q_r / dx)
+    return res, qx
+
+def horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde, s, Gz_T):
+    """
+    Update horizontal conductive heat fluxes and residuals.
+
+    Face-normal gradient dT/dx on the vertical left/right faces; the cross term s*dT/dz is
+    solved implicitly (Gz_T).
+    """
+    res = jnp.zeros_like(T_new)
+    # Calculate the average thermal conductivity between cells
+    lambda_int_new = 2 * lambda_eff_new[:, 1:] * lambda_eff_new[:, :-1] / (lambda_eff_new[:, 1:] + lambda_eff_new[:, :-1])
+    diff_T_new = T_new[:, 1:] - T_new[:, :-1]
+
+    # Internal fluxes over cell faces
+    Gz_face = 0.5 * (Gz_T[:, :-1] + Gz_T[:, 1:])
+    q = -lambda_int_new * normal_gradient_vertical_face(diff_T_new, dx, s, Gz_face)
+
+    # Calculate convective term in residual, the geometric factor is again dz/(dz*dx)=1/dx
+    # right side flux
+    res = res.at[:, :-1].add(q / dx)
+    # left side flux
+    res = res.at[:, 1:].add(-q / dx)
+    return res
+
+def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde, s, Gxi_T):
+    """
+    Update vertical conductive heat fluxes and residuals.
+    Robin-type surface flux: T_surface (air) is treated as a ghost cell
+    at half a cell distance (dz/2) from the top cell center.
+
+    Top/bottom faces are tilted on the sheared mesh, so the driving gradient is the
+    face-normal one; the along-row cross term is solved implicitly (Gxi_T).
+    """
+    res = jnp.zeros_like(T_new)
+    # Calculate the average thermal conductivity between cells
+    lambda_int_new = 2 * lambda_eff_new[:-1, :] * lambda_eff_new[1:, :] / (lambda_eff_new[:-1, :] + lambda_eff_new[1:, :])
+    diff_T_new = T_new[1:, :]-T_new[:-1, :]
+
+    # Internal fluxes over cell faces
+    Gxi_face = 0.5 * (Gxi_T[:-1, :] + Gxi_T[1:, :])
+    q = -lambda_int_new * normal_gradient_tilted_face(diff_T_new, dz, s, Gxi_face)
+
+    # Flux from surface ghost cell (air at T_surface, distance dz/2).
+    # T_surface is uniform along the tilted surface, so its along-face derivative vanishes and
+    # the face-normal gradient is sqrt(1+s^2) * dT/dz (equivalently: the perpendicular distance
+    # from the top cell centre to the tilted surface is (dz/2)/sqrt(1+s^2)).
+    q_surf = -(lambda_eff_new[-1,:]*(T_surface-T_new[-1,:])/(dz/2)) * jnp.sqrt(1 + s**2)
+
+    # Calculate convective term in residual
+    # bottom fluxes
+    res = res.at[1:, :].add(-q * dx_tilde / (dz*dx))
+    # top fluxes
+    res = res.at[:-1, :].add(q * dx_tilde / (dz*dx))
+    # surface flux
+    res = res.at[-1, :].add(q_surf * dx_tilde / (dz*dx))
+    return res
+
+def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde):
+    """
+    Update vertical conductive heat fluxes and residuals.
+    """
+    res = jnp.zeros_like(T_new)
+
+    # Upwinding for interface temperatures
+    cond = qz > 0
+    T_new = jnp.concatenate([jnp.concatenate([T_new[:1,:],T_new],axis=0),T_surface[None,:]],axis=0)
+    T_interface_new = jnp.where(cond, T_new[:-1, :], T_new[1:, :])
+
+    # Calculate cond. heat fluxes
+    q_bottom = -qz[:-1, :] * c_l * rho_l * T_interface_new[:-1,:]
+
+    q_top = qz[1:, :] * c_l * rho_l * T_interface_new[1:,:]
+
+    # Calculate convective term in residual
+    res = res.at[:, :].add(q_top * dx_tilde / (dz*dx))
+    res = res.at[:, :].add(q_bottom * dx_tilde / (dz*dx))
+    return res
+
+def horizontal_convflux_update(qx, c_l, T_new, rho_l, dx):
+    """
+    Update vertical conductive heat fluxes and residuals.
+    """
+    res = jnp.zeros_like(T_new)
+    # Calculate interface temperatures
+    cond = qx > 0
+    #qx = qx.at[:,-1].set(0)
+    T_new_app = jnp.concatenate([T_new[:,:1],jnp.concatenate([T_new,T_new[:,-1:]],axis=1)],axis=1)
+    T_interface_new = jnp.where(cond, T_new_app[:, :-1], T_new_app[:, 1:])
+
+    # Calculate cond. heat fluxes
+    q_left = -qx[:, :-1] * c_l * rho_l * T_interface_new[:,:-1]
+    q_right = qx[:, 1:] * c_l * rho_l * T_interface_new[:,1:]
+
+    # Calculate convective term in residual
+    res = res.at[:, :].add(q_left / dx)
+    res = res.at[:, :].add(q_right / dx)
+    return res

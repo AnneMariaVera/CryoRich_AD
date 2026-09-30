@@ -1,0 +1,17 @@
+name: cryorich_AD
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10,<3.13
+  - numpy
+  - scipy
+  - matplotlib-base
+  - cmocean
+  - netcdf4
+  - jupyterlab
+  - ipykernel
+  - pip
+  - pip:
+      - jax
+      - interpax
+      - sparsejac

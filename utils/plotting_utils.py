@@ -38,7 +38,7 @@ plt.rcParams['font.size'] = 8
 PAGE_WIDTH_CM = 16.46   
 PAGE_HEIGHT_CM = 22.41 
 
-PARAMETRIZATION_STYLE = {
+parametrisation_STYLE = {
     "drying":             {"color": "#0072B2", "linestyle": "-"},        # blue
     "drying_omega10":     {"color": "#56B4E9", "linestyle": "--"},       # sky blue
     "permaFoam_omega10":  {"color": "#D55E00", "linestyle": "-."},       # vermillion
@@ -46,44 +46,26 @@ PARAMETRIZATION_STYLE = {
     "cap":                {"color": "#009E73", "linestyle": (0, (3, 1, 1, 1))},  # bluish green
 }
 
-def parametrization_style(parametrization):
-    return PARAMETRIZATION_STYLE.get(parametrization, {"color": "black", "linestyle": "-"})
+def parametrisation_style(parametrisation):
+    return parametrisation_STYLE.get(parametrisation, {"color": "black", "linestyle": "-"})
 
-def parametrization_label(parametrization):
+def parametrisation_label(parametrisation):
     return {
         "drying": "(A) drying assumption",
-        "permaFoam_omega10": r"(B) impedance factor, $\Omega=10$",
-        "permaFoam_omega50": r"(C) impedance factor, $\Omega=50$",
+        "permaFoam_omega10": r"(B) imp. factor, $\Omega=10$",
+        "permaFoam_omega50": r"(C) imp. factor, $\Omega=50$",
         "cap": "(D) capillary bundle model",
         "drying_omega10": r"(E) drying assumption, with imp. factor $\Omega=10$",
-    }.get(parametrization)
+    }.get(parametrisation)
 
-def parametrization_label_leg(parametrization):
+def parametrisation_label_leg(parametrisation):
     return {
-        "drying": "(B) drying assumption",
-        "permaFoam_omega10": r"(C) impedance factor, $\Omega=10$",
-        "permaFoam_omega50": r"(D) impedance factor, $\Omega=50$",
-        "cap": "(A) capillary bundle model",
-        "drying_omega10": r"(E) drying assumption, with imp. factor $\Omega=10$",
-    }.get(parametrization)
-
-def plot_grid(geom):
-    """Plot the grid and nodes of the geometry."""
-    fig, ax = plt.subplots(figsize=(30*cm, 20*cm))
-    ax.set_aspect('equal')
-    ax.plot(geom.X,geom.Z,".r")
-    ax.plot(geom.X[0,0].T,geom.Z[0,0].T,".r",label="nodes")
-    ax.plot(geom.X_plot,geom.Z_plot,"-k")
-    ax.plot(geom.X_plot[0,0].T,geom.Z_plot.T[0,0],"-k",label="grid")
-    ax.plot(geom.X_plot.T,geom.Z_plot.T,"-k")
-    ax.spines[['top','right']].set_visible(False)
-    ax.set_xlabel("x [m]")
-    ax.set_ylabel("z [m]")
-    ax.spines['left'].set_position(('outward', 10))
-    ax.title.set_text("Discretization of the domain")
-    ax.legend(loc='lower left',facecolor='none',edgecolor='none')
-    fig.tight_layout()
-    return fig, ax
+        "drying": "(A) drying assumption",
+        "permaFoam_omega10": r"(C) imp. factor, $\Omega=10$",
+        "permaFoam_omega50": r"(D) imp. factor, $\Omega=50$",
+        "cap": "(E) capillary bundle model",
+        "drying_omega10": r"(B) drying assumption, with imp. factor $\Omega=10$",
+    }.get(parametrisation)
 
 def plot_sparsity_pattern(geom):
     """Plot the sparsity pattern of jacobian matrix."""
@@ -164,25 +146,41 @@ def plot_cellValues(X, Z, cellValues, colormap="Blues", title=" ", colorbar_labe
     fig.tight_layout()
     return fig, ax
 
-def exit_fluxes(db, relative=False):
-    """Instantaneous exit fluxes (per unit width) for q_top, q_bottom, q_surf.
+def exit_fluxes(db, cumulative=False, relative=False):
+    """Exit fluxes (per unit width [m²/s]) for q_top, q_bottom, q_surf.
 
-    With `relative=True`, each series is expressed as its instantaneous share
-    of q_top+q_bottom+q_surf.
+    Outflow through the seepage face is split at z = -1.5 m into interflow (top)
+    and groundwater discharge (bottom); surface runoff is summed along the tilted
+    top boundary.
+
+    With `cumulative=True`, the fluxes are integrated over the true simulation
+    times (trapezoidal, since the solver uses adaptive stepping) into cumulative
+    exit volumes [m²]. With `relative=True`, each series is expressed as its
+    share of the (running) total q_top+q_bottom+q_surf. The cumulative share is
+    a much less noise-sensitive partitioning metric than the instantaneous flux
+    ratio, since it isn't dominated by short high-flux events (e.g. a single
+    ERA5 snowmelt spike).
     """
-    dz = abs(db["Z"][0,1] - db["Z"][0,0])
-    dx = abs(db["X"][1,0] - db["X"][0,0])
+    dz = abs(db["Z"][1,0] - db["Z"][0,0])
+    dx = abs(db["X"][0,1] - db["X"][0,0])
     dx_tilde = np.sqrt(dx**2 + dz**2)
-
     idx_top = db["Z"][:,-1] >= -1.5
-    idx_bottom = db["Z"][:,-1] < -1.5
 
-    time_s = np.array(db["time_array"])[5:]
+    steps = range(1, len(db["time_array"]))
+    time_s = np.array(db["time_array"])[1:]
     times_days = time_s / 24 / 60 / 60
 
-    q_surf = np.array([np.sum(np.abs(db["q_runoff"][i]))*dx_tilde for i in range(5, len(db["time_array"]))])
-    q_top = np.array([np.sum(np.abs(db["qx_array"][i][:,-1][idx_top])*dz) for i in range(5, len(db["time_array"]))])
-    q_bottom = np.array([np.sum(np.abs(db["qx_array"][i][:,-1][idx_bottom])*dz) for i in range(5, len(db["time_array"]))])
+    # only outflow counts (positive fluxes); NaN is treated as zero
+    qx_out = np.array([db["qx_array"][i][:,-1] for i in steps])
+    qx_out = np.where(qx_out > 0, qx_out, 0)
+    q_top = np.sum(qx_out[:, idx_top], axis=1) * dz
+    q_bottom = np.sum(qx_out[:, ~idx_top], axis=1) * dz
+    q_surf = np.array([np.sum(np.where(db["q_runoff"][i] > 0, db["q_runoff"][i], 0)) for i in steps]) * dx_tilde
+
+    if cumulative:
+        q_top = cumulative_trapezoid(q_top, time_s, initial=0)
+        q_bottom = cumulative_trapezoid(q_bottom, time_s, initial=0)
+        q_surf = cumulative_trapezoid(q_surf, time_s, initial=0)
 
     if relative:
         q_tot = np.where(q_top + q_bottom + q_surf == 0, np.nan, q_top + q_bottom + q_surf)
@@ -190,30 +188,14 @@ def exit_fluxes(db, relative=False):
 
     return times_days, q_top, q_bottom, q_surf
 
-def cumulative_exit_volumes(db, relative=False):
-    """Cumulative exit volumes (per unit width) for q_top, q_bottom, q_surf.
+def plot_flux_comparison(dbs, parametrisations=None, quantity="top", cumulative=True, relative=False,
+                         title=None, ylim=None, fig=None, ax=None, legend=False):
+    """Overlay the exit flux (or cumulative exit volume) of one flow path across several parametrisations.
 
-    Integrates the raw fluxes from `exit_fluxes` over time (trapezoidal, on the
-    true simulation times, since the solver uses adaptive stepping). With
-    `relative=True`, each series is expressed as its share of the running
-    cumulative total (Q_top+Q_bottom+Q_surf) — a much less noise-sensitive
-    partitioning metric than the instantaneous flux ratio, since it isn'tparametrization_label(parametrization) or parametrization
-    dominated by short high-flux events (e.g. a single ERA5 snowmelt spike).
+    `dbs` is a dict {parametrisation: db}. `quantity` selects which path to compare
+    ("top"=interflow, "bottom"=GW discharge, "surf"=surface runoff). If no `ax` is
+    given, a new figure is created.
     """
-    time_s = np.array(db["time_array"])[5:]
-    times_days, q_top, q_bottom, q_surf = exit_fluxes(db, relative=False)
-
-    Q_surf = cumulative_trapezoid(q_surf, time_s, initial=0)
-    Q_top = cumulative_trapezoid(q_top, time_s, initial=0)
-    Q_bottom = cumulative_trapezoid(q_bottom, time_s, initial=0)
-
-    if relative:
-        Q_tot = np.where(Q_top + Q_bottom + Q_surf == 0, np.nan, Q_top + Q_bottom + Q_surf)
-        Q_surf, Q_top, Q_bottom = Q_surf/Q_tot, Q_top/Q_tot, Q_bottom/Q_tot
-
-    return times_days, Q_top, Q_bottom, Q_surf
-
-def _plot_flux_comparison(dbs, flux_fn, parametrisations, quantity, relative, ylabel, fig, ax,legend = False):
     standalone = ax is None
     if standalone:
         fig, ax = plt.subplots(figsize=(12*cm,9.5*cm))
@@ -222,50 +204,27 @@ def _plot_flux_comparison(dbs, flux_fn, parametrisations, quantity, relative, yl
         parametrisations = list(dbs.keys())
 
     quantity_index = {"top": 1, "bottom": 2, "surf": 3}[quantity]
-    for parametrization in parametrisations:
-        times_days, *series = flux_fn(dbs[parametrization], relative=relative)
-        style = parametrization_style(parametrization)
-        ax.plot(times_days, series[quantity_index-1], linewidth=2,
-               label=parametrization_label_leg(parametrization) or parametrization,
+    for parametrisation in parametrisations:
+        series = exit_fluxes(dbs[parametrisation], cumulative=cumulative, relative=relative)
+        style = parametrisation_style(parametrisation)
+        ax.plot(series[0], series[quantity_index], linewidth=2,
+               label=parametrisation_label_leg(parametrisation) or parametrisation,
                color=style["color"], linestyle=style["linestyle"])
-        print("values at the end of the simulation for",parametrization)
-        print(quantity,jnp.nanmax(series[quantity_index-1]))
 
     ax.spines[['top', 'right']].set_visible(False)
     ax.spines['left'].set_position(('data', 0))
     ax.spines['bottom'].set_position(('data', 0))
     ax.set_xlabel(r"time [days]")
-    ax.set_ylabel(ylabel)
-    if legend == True:
+    if cumulative:
+        ax.set_ylabel(r"V/V$_{tot}$ [-]" if relative else r"V [m$^2$]")
+    else:
+        ax.set_ylabel(r"q/q$_{tot}$ [-]" if relative else r"q [m$^2$/s]")
+    ax.set_ylim(ylim)
+    ax.set_title(title or "")
+    if legend:
         ax.legend(loc="best", facecolor='none', edgecolor='none')
     if standalone:
         fig.tight_layout()
-    return fig, ax
-
-def plot_exit_flux(dbs, parametrisations=None, quantity="top", relative=True,
-                                         title=None, ylim=None, fig=None, ax=None, legend = False):
-    """Overlay cumulative exit-volume curves for one flow path across several parametrisations.
-
-    `dbs` is a dict {parametrization: db}. `quantity` selects which path to compare
-    ("top"=interflow, "bottom"=GW discharge, "surf"=surface runoff).
-    """
-    ylabel = f"V" + (r"$/Q_{tot}$ [-]" if relative else " [m$^2$]")
-    fig, ax = _plot_flux_comparison(dbs, exit_fluxes, parametrisations, quantity, relative, ylabel, fig, ax,legend)
-    ax.set_ylim(ylim)
-    ax.set_title(title or "")
-    return fig, ax
-
-def plot_cumulative_interflow_comparison(dbs, parametrisations=None, quantity="top", relative=True,
-                                         title=None, ylim=None, fig=None, ax=None, legend = False):
-    """Overlay cumulative exit-volume curves for one flow path across several parametrisations.
-
-    `dbs` is a dict {parametrization: db}. `quantity` selects which path to compare
-    ("top"=interflow, "bottom"=GW discharge, "surf"=surface runoff).
-    """
-    ylabel = f"V" + (r"$/Q_{tot}$ [-]" if relative else " [m$^2$]")
-    fig, ax = _plot_flux_comparison(dbs, cumulative_exit_volumes, parametrisations, quantity, relative, ylabel, fig, ax,legend)
-    ax.set_ylim(ylim)
-    ax.set_title(title or "")
     return fig, ax
 
 def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False, figsize=None, legend=True):
@@ -279,29 +238,20 @@ def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False
     if parametrisations is None:
         parametrisations = list(dbs.keys())
 
-    def _has_surf(db):
-        q_surf = np.asarray(exit_fluxes(db)[3])
-        q_surf = q_surf[~np.isnan(q_surf)]
-        return q_surf.size > 0 and np.any(q_surf != 0)
-
-    has_surf = any(_has_surf(db) for db in dbs.values())
-    quantities = ["surf", "top", "bottom"] if has_surf else ["top", "bottom"]
+    quantities = ["surf", "top", "bottom"]
     titles = {"surf": "surface runoff",
               "top": "interflow",
               "bottom": "groundwater discharge"}
 
     if figsize is None:
-        figsize = (PAGE_WIDTH_CM*cm if has_surf else PAGE_WIDTH_CM*2/3*cm, 6*cm)
+        figsize = (PAGE_WIDTH_CM*cm)
     fig, axes = plt.subplots(1, len(quantities), figsize=figsize)
 
     for ax, quantity in zip(axes, quantities):
-        plot_cumulative_interflow_comparison(dbs, parametrisations, quantity=quantity, relative=relative,
-                                             title=titles[quantity], fig=fig, ax=ax, legend=False)
+        plot_flux_comparison(dbs, parametrisations, quantity=quantity, relative=relative,
+                             title=titles[quantity], fig=fig, ax=ax)
     fig.tight_layout()
     if legend:
-        # fig.tight_layout() already reserved just enough room below the axes
-        # for their own x-labels/ticks -- the legend needs to stack on top of
-        # that, not replace it.
         labels_margin = fig.subplotpars.bottom
 
         handles, labels = axes[0].get_legend_handles_labels()
@@ -320,8 +270,10 @@ def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False
 def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoom_end=135,
                                                   inset_quantities=("surf", "top"),
                                                   figsize=None, legend=True):
-    """Like `plot_cumulative_partitioning_grid`, but panels in `inset_quantities`
-    carry a zoomed inset over the pre-melt window (0 to `zoom_end` days).
+    """Cumulative exit volumes across parametrisations, one panel per flow path
+    (surface runoff, interflow, groundwater discharge). Panels in
+    `inset_quantities` carry a zoomed inset over the pre-melt window
+    (0 to `zoom_end` days).
 
     Restricting an inset to the pre-melt period sets its y-scale from the
     smallest, earliest-moving parametrisation rather than from whichever one
@@ -339,32 +291,25 @@ def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoo
 
     series = {}
     for p in parametrisations:
-        times, Qtop, Qbot, Qsurf = cumulative_exit_volumes(dbs[p])
-        good = ~(np.isnan(Qtop) | np.isnan(Qbot) | np.isnan(Qsurf))
-        series[p] = {"t": times[good], "surf": Qsurf[good], "top": Qtop[good], "bottom": Qbot[good]}
+        times, Qtop, Qbot, Qsurf = exit_fluxes(dbs[p], cumulative=True)
+        series[p] = {"t": times, "surf": Qsurf, "top": Qtop, "bottom": Qbot}
 
     if figsize is None:
         figsize = (PAGE_WIDTH_CM*cm, 7*cm)
-    fig = plt.figure(figsize=figsize)
-    gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 1])
-    ax_surf = fig.add_subplot(gs[0, 0])
-    ax_top = fig.add_subplot(gs[0, 1])
-    ax_bot = fig.add_subplot(gs[0, 2])
-    axes = {"surf": ax_surf, "top": ax_top, "bottom": ax_bot}
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+    insets = []
 
-    for quantity, ax in axes.items():
+    for ax, quantity in zip(axes, titles):
         for p in parametrisations:
-            s = series[p]
-            style = parametrization_style(p)
-            ax.plot(s["t"], s[quantity], linewidth=2, color=style["color"],
-                   linestyle=style["linestyle"], label=parametrization_label_leg(p) or p)
+            style = parametrisation_style(p)
+            ax.plot(series[p]["t"], series[p][quantity], linewidth=2, color=style["color"],
+                    linestyle=style["linestyle"], label=parametrisation_label_leg(p) or p)
         ax.set_xlabel("time [days]")
         ax.set_title(titles[quantity])
         ax.spines[['top', 'right']].set_visible(False)
-    ax_surf.set_ylabel(r"V [m$^2$]")
 
-    for quantity in inset_quantities:
-        ax = axes[quantity]
+        if quantity not in inset_quantities:
+            continue
         zoom_max = max(series[p][quantity][series[p]["t"] <= zoom_end].max() for p in parametrisations)
         if zoom_max <= 0:
             continue
@@ -372,9 +317,9 @@ def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoo
                            bbox_to_anchor=(0.22, 0.34, 0.78, 0.54), bbox_transform=ax.transAxes,
                            loc="upper left", borderpad=0)
         for p in parametrisations:
-            s = series[p]
-            style = parametrization_style(p)
-            axins.plot(s["t"], s[quantity], linewidth=1.4, color=style["color"], linestyle=style["linestyle"])
+            style = parametrisation_style(p)
+            axins.plot(series[p]["t"], series[p][quantity], linewidth=1.4,
+                       color=style["color"], linestyle=style["linestyle"])
         axins.set_xlim(0, zoom_end)
         axins.set_ylim(0, zoom_max * 1.15)
         axins.tick_params(labelsize=6.5)
@@ -383,24 +328,28 @@ def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoo
             spine.set_edgecolor("0.4")
             spine.set_linewidth(0.8)
         mark_inset(ax, axins, loc1=2, loc2=1, fc="none", ec="0.5", linewidth=0.7)
+        insets.append(axins)
+    axes[0].set_ylabel(r"V [m$^2$]")
 
     fig.tight_layout()
     if legend:
+        # Anchored to the figure bottom, so its rendered height (measured after a
+        # draw) tells us exactly how much extra room to reserve -- no guessed margin.
         labels_margin = fig.subplotpars.bottom
-        handles, labels = ax_surf.get_legend_handles_labels()
-        ncol = min(len(labels), 3)
-        leg = fig.legend(handles, labels, loc="lower center", ncol=ncol,
+        handles, labels = axes[0].get_legend_handles_labels()
+        leg = fig.legend(handles, labels, loc="lower center", ncol=min(len(labels), 3),
                          facecolor='none', edgecolor='none', bbox_to_anchor=(0.5, 0))
         fig.canvas.draw()
         legend_height = leg.get_window_extent(fig.canvas.get_renderer()) \
                            .transformed(fig.transFigure.inverted()).height
         fig.subplots_adjust(bottom=labels_margin + legend_height + 0.02)
 
-    return fig, (ax_surf, ax_top, ax_bot, axins)
+    return fig, (tuple(axes), tuple(insets))
 
-def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap=icy_soil,
+def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap=icy_soil,
                      title=" ", xlabel="x [m]", ylabel="z [m]",
-                     density=1.0, color="k", linewidth=1.0, arrowsize=0,cmap_stream="magma",
+                     density=5.0, color="k", linewidth=1.0, arrowsize=0,
+                     start_points=None, n_seeds=20, n_seeds_base=5, minlength=0.02,
                      fig=None, ax=None, cax=None):
     """
     Plot streamlines for unsaturated flow on a skewed (parallelogram) grid.
@@ -423,6 +372,28 @@ def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap=icy_soil,
         Width of streamlines.
     arrowsize : float
         Arrow size on streamlines.
+    q_min : float or None
+        Absolute cut-off on |q| [m/s]. Cells below it carry no visible flow (frozen /
+        impermeable soil) and are blanked, so no streamline is drawn through them.
+        If None, ``q_rel_min * q_ref`` is used.
+    q_rel_min : float
+        Relative cut-off used when ``q_min`` is None. streamplot is direction-only, so
+        without a cut-off it draws continuous lines through the ice-rich layer even
+        where |q| is orders of magnitude below the applied recharge.
+    q_ref : float or None
+        Flux scale the relative cut-off refers to [m/s]. The applied recharge is the
+        meaningful one - it is the same for every parametrisation, so the panels stay
+        comparable. ``plot_streamlines_grid`` passes it from ``db["q_inf_interp"]``.
+        If None, ``max|q|`` of this panel is used, which is panel-dependent.
+    minlength : float
+        Shortest trajectory streamplot still draws, in normalised domain units. The
+        default of matplotlib (0.1) throws away every path that the frozen layer cuts
+        short, so whole panels come out empty.
+    start_points : (n, 2) array or None
+        Seeds for the forward integration. If None, ``n_seeds`` seeds are placed in the
+        top row of cells and ``n_seeds_base`` in the bottom row. The basal seeds are
+        needed because a frozen layer cuts the surface streamlines off before they reach
+        the base, so the downslope flow feeding the seepage face would not be drawn.
     """
 
     X = np.asarray(X, dtype=np.float64)
@@ -445,51 +416,52 @@ def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap=icy_soil,
     ax.spines[['top', 'right']].set_visible(False)
     ax.spines['left'].set_position(('outward', 10))
 
-    # Optional scalar field as background
-    if field is not None:
-        pcm = ax.pcolormesh(X, Z, field,vmin=0,vmax=0.46,shading="gouraud", cmap=cmap)
-        if cax0 is not None:
-            fig.colorbar(pcm, cax=cax0,label=r"$\theta_i$ [-]")
-        else:
-            fig.colorbar(pcm, ax=ax,label=r"$\theta_i$ [-]")
+    # scalar field of ice content as background
 
-    # For skewed / deformed     X, Y = jnp.meshgrid(hc, T)grids: interpolate onto a rectilinear evaluation grid
-    Lx = X.max() - X.min()
-    Lz = Z.max() - Z.min()
+    pcm = ax.pcolormesh(X, Z, field,vmin=0,vmax=0.46,shading="gouraud", cmap=cmap)
+    if cax0 is not None:
+        fig.colorbar(pcm, cax=cax0,label=r"$\theta_i$ [-]")
+    else:
+        fig.colorbar(pcm, ax=ax,label=r"$\theta_i$ [-]")
 
-    # Precompute gridstitle_fontsize
+    # grid for streamplot evaluation. The streamplot function can not be evaluted on the sheared mesh, 
+    # so we interpolate the fluxes onto a rectilinear grid. 
     xg = np.linspace(X.min(), X.max(), 200)
     zg = np.linspace(Z.min(), Z.max(), 200)
     Xg, Zg = np.meshgrid(xg, zg)
 
-    start_points = np.c_[
-        np.linspace(0.5, 9.5, 20),
-        -0.1*np.linspace(0.5, 9.5, 20) - 0.05
-    ]
+    # Seeds in the top and the bottom row of cells, placed on the actual cell centres of
+    # the sheared mesh rather than on a hard-coded offset below the surface.
+    if start_points is None:
+        inset = abs(Z[1, 0] - Z[0, 0])
+        x_top = np.linspace(X.min(), X.max(), n_seeds + 2)[1:-1]
+        x_bot = np.linspace(X.min(), X.max(), n_seeds_base + 2)[1:-1]
+        start_points = np.concatenate([
+            np.column_stack([x_top, Z[-1, 0] + slope * (x_top - X[0, 0]) - inset]),
+            np.column_stack([x_bot, Z[0, 0] + slope * (x_bot - X[0, 0]) + inset]),
+        ])
+    start_points = np.asarray(start_points, dtype=np.float64)
 
+    # streamplot needs the Cartesian components. qx is the flux through the vertical faces,
+    # i.e. already the horizontal Darcy component (positive = +x = downslope for s < 0).
+    # qz is the flux normal to the tilted top/bottom faces, n = (-s, 1)/sqrt(1+s^2), so
+    # qz = (q_z - s*q_x)/sqrt(1+s^2)  ->  q_z = sqrt(1+s^2)*qz + s*qx.
+    qz_cart = np.sqrt(1 + slope**2) * qz + slope * qx
     qx_interp = griddata((X.flatten(), Z.flatten()), qx.flatten(), (Xg, Zg), method="linear")
-    qz_interp = griddata((X.flatten(), Z.flatten()), qz.flatten()+slope*qx.flatten(), (Xg, Zg), method="linear")
+    qz_interp = griddata((X.flatten(), Z.flatten()), qz_cart.flatten(), (Xg, Zg), method="linear")
 
-    # linewidth scaling (still log10-based if you prefer)
-    # lw = np.log10(speed) - np.nanmin(np.log10(speed))
-    # lw = lw / np.nanmax(lw) * linewidth
-    # lw = np.nan_to_num(lw, nan=1e-12)
-
-    # -----------------------------------------
-    # Make linewidth depend on speed
-    # -----------------------------------------
-    # lw = (norm/np.max(norm)) * linewidth
-    #lw = np.nan_to_num(lw, nan=0.001)
     stream = ax.streamplot(
         xg, zg, qx_interp, qz_interp,
-        density=5,
-        color="k",
+        density=density,
+        color=color,
         linewidth=linewidth,
         arrowsize=arrowsize,
         start_points=start_points,
-        integration_direction="forward"
+        integration_direction="forward",
+        minlength=minlength,
+        zorder=3,
     )
-    #fig.colorbar(stream.lines,cax=cax1,label=r"$||q||_2$ [m/s]")
+
     # Draw boundary
     ax.plot([X[0,0],X[0,-1]],[Z[0,0],Z[0,-1]],"-k")
     ax.plot([X[-1,0],X[0,0]],[Z[-1,0],Z[0,0]],"-k")
@@ -504,14 +476,13 @@ def plot_streamlines(db, X, Z, qx, qz, slope, field=None, cmap=icy_soil,
 
 def plot_streamlines_grid(dbs, index, parametrisations=None, slope=-0.1, field_key="theta_i_total",
                           relative=False, figsize=None, title_fontsize=None, annotation_fontsize=None,
-                          cum=True, cum_height_ratio=1.3, legend=True):
+                          cum=True, cum_height_ratio=1.3, legend=True, q_rel_min=1e-3):
     """
-    Combined figure: the streamline field for each parametrization stacked in
-    rows (one row per parametrization). If `cum` is True (default), a
-    cumulative partitioning comparison across parametrisations (one panel per
-    flow path, as in `plot_cumulative_partitioning_grid`) is prepended on top,
-    with a vline marking the time of `index`, plus a shared legend; if False,
-    the figure is just the stacked streamline panels.
+    Combined figure: the streamline field for each parametrisation stacked in
+    rows (one row per parametrisation). If `cum` is True (default), a row with
+    the cumulative exit volumes across parametrisations (one panel per flow
+    path) is prepended on top, with a vline marking the time of `index`, plus a
+    shared legend; if False, the figure is just the stacked streamline panels.
     """
     if parametrisations is None:
         parametrisations = list(dbs.keys())
@@ -521,20 +492,11 @@ def plot_streamlines_grid(dbs, index, parametrisations=None, slope=-0.1, field_k
         annotation_fontsize = 8
 
     n_param = len(parametrisations)
+    quantities = {"surf": "surface runoff", "top": "interflow", "bottom": "groundwater discharge"}
+    legend_height_ratio = 0.35
 
     if cum:
-        def _has_surf(db):
-            q_surf = np.asarray(exit_fluxes(db)[3])
-            q_surf = q_surf[~np.isnan(q_surf)]
-            return q_surf.size > 0 and np.any(q_surf != 0)
-
-        has_surf = any(_has_surf(db) for db in dbs.values())
-        quantities = ["surf", "top", "bottom"] if has_surf else ["top", "bottom"]
-        titles = {"surf": "surface runoff",
-                  "top": "interflow",
-                  "bottom": "groundwater discharge"}
         ncols = len(quantities)
-        legend_height_ratio = 0.35
         n_header_rows = 2
         height_ratios = [cum_height_ratio, legend_height_ratio] + [1]*n_param
     else:
@@ -552,14 +514,14 @@ def plot_streamlines_grid(dbs, index, parametrisations=None, slope=-0.1, field_k
 
     # `index` is shared across parametrisations (same time step for every db),
     # so any db's time_array gives the time of the vline/annotation.
-    time_days = np.asarray(dbs[parametrisations[0]]["time_array"])[index] / 86400
+    time_days = np.asarray(dbs[parametrisations[0]]["time_array"])[index] / (24 * 60 * 60)
 
     cum_axes = []
     if cum:
         for col, quantity in enumerate(quantities):
             ax = fig.add_subplot(gs[0, col])
-            plot_cumulative_interflow_comparison(dbs, parametrisations, quantity=quantity, relative=relative,
-                                                 title=titles[quantity], fig=fig, ax=ax, legend=False)
+            plot_flux_comparison(dbs, parametrisations, quantity=quantity, relative=relative,
+                                 title=quantities[quantity], fig=fig, ax=ax)
             ax.axvline(time_days, color="black", linestyle="--")
             cum_axes.append(ax)
 
@@ -577,34 +539,30 @@ def plot_streamlines_grid(dbs, index, parametrisations=None, slope=-0.1, field_k
                          for ax in cum_axes)
 
         handles, labels = cum_axes[0].get_legend_handles_labels()
-        ncol = min(len(labels), 3)
-        fig.legend(handles, labels, loc="upper center", ncol=ncol, frameon=False,
+        fig.legend(handles, labels, loc="upper center", ncol=min(len(labels), 3), frameon=False,
                   facecolor='none', edgecolor='none', bbox_to_anchor=(0.5, cum_bottom - 0.01),
                   fontsize=annotation_fontsize)
 
     stream_axes = []
-    ax_stream_ref = None
     last_row = n_header_rows + n_param - 1
-    for row, parametrization in enumerate(parametrisations, start=n_header_rows):
-        db = dbs[parametrization]
+    for row, parametrisation in enumerate(parametrisations, start=n_header_rows):
+        db = dbs[parametrisation]
         gs_stream = gs[row, :].subgridspec(nrows=1, ncols=2, width_ratios=[1, 0.025], wspace=0.1)
-        ax_stream = fig.add_subplot(gs_stream[0, 0], sharex=ax_stream_ref)
+        ax = fig.add_subplot(gs_stream[0, 0], sharex=stream_axes[0] if stream_axes else None)
         cax = fig.add_subplot(gs_stream[0, 1])
-        if ax_stream_ref is None:
-            ax_stream_ref = ax_stream
 
-        plot_streamlines(db, db["X"], db["Z"], db["qx_centered_array"][index], db["qz_centered_array"][index],
+        plot_streamlines(db["X"], db["Z"], db["qx_centered_array"][index], db["qz_centered_array"][index],
                          slope=slope, field=db[field_key][index], linewidth=1,
-                         title="", fig=fig, ax=ax_stream, cax=cax)
-        ax_stream.set_title(parametrization_label(parametrization) or parametrization,
-                            loc="left", fontsize=title_fontsize, fontweight="bold")
+                         title="", fig=fig, ax=ax, cax=cax)
+        ax.set_title(parametrisation_label_leg(parametrisation) or parametrisation,
+                     loc="left", fontsize=title_fontsize, fontweight="bold")
 
         if row < last_row:
-            ax_stream.set_xlabel("")
-            ax_stream.tick_params(bottom=False, labelbottom=False)
-            ax_stream.spines['bottom'].set_visible(False)
+            ax.set_xlabel("")
+            ax.tick_params(bottom=False, labelbottom=False)
+            ax.spines['bottom'].set_visible(False)
 
-        stream_axes.append(ax_stream)
+        stream_axes.append(ax)
 
     stream_axes[0].text(0.98, 0.97, f"t = {time_days:.0f} days", transform=stream_axes[0].transAxes,
                         ha="right", va="top", fontsize=annotation_fontsize,
@@ -666,7 +624,7 @@ def plot_T_grid(dbs, index, parametrisations=None, figsize=None, title_fontsize=
         ax.spines[['top', 'right']].set_visible(False)
         ax.spines['left'].set_position(('outward', 10))
 
-        ax.set_title(parametrization_label(parametrisation) or parametrisation,
+        ax.set_title(parametrisation_label_leg(parametrisation) or parametrisation,
                     loc="left", fontsize=title_fontsize, fontweight="bold")
 
         if row < last_row:
@@ -713,7 +671,7 @@ def plot_krel_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_
     ax.set_ylabel(r'$T$ [°C]')
     ax.set_zlabel(r'$k_{rel}$ [-]')
 
-    label = parametrization_label(param)
+    label = parametrisation_label(param)
     if label:
         ax.text2D(0.02, 0.95, label, transform=ax.transAxes, fontsize=title_fontsize,
                   fontweight="bold", ha="left", va="top")
@@ -750,7 +708,7 @@ def plot_theta_l_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, tit
     ax.set_ylabel(r'$T$ [°C]')
     ax.set_zlabel(r'$k_{rel}$ [-]')
 
-    label = parametrization_label(param)
+    label = parametrisation_label(param)
     if label:
         ax.text2D(0.02, 0.95, label, transform=ax.transAxes, fontsize=title_fontsize,
                   fontweight="bold", ha="left", va="top")
@@ -853,14 +811,9 @@ def create_animation_streamlines(
 
     def interpolate_flow(qx, qz):
         qx_i = griddata((Xf, Zf), qx.flatten(), (Xg, Zg), method="linear")
-        qz_i = griddata((Xf, Zf), (qz + slope * qx).flatten(), (Xg, Zg), method="linear")
+        qz_i = griddata((Xf, Zf), (np.sqrt(1 + slope**2) * qz + slope * qx).flatten(), (Xg, Zg), method="linear")
         speed = np.sqrt(qx_i**2 + qz_i**2)
         return qx_i, qz_i, speed
-
-    # def compute_linewidth(speed):
-    #     lw = np.log10(speed) - np.nanmin(np.log10(speed))
-    #     lw = lw / np.nanmax(lw) * linewidth
-    #     return np.nan_to_num(lw, nan=0.000000001)
 
     def draw_domain_outline(ax):
         ax.plot([X[0,0], X[0,-1]], [Z[0,0], Z[0,-1]], "-k")
