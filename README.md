@@ -9,52 +9,82 @@ Email: anne.hermann@uni-tuebingen.de
 Short description
 -----------------
 
-This repository contains several notebooks and utility modules used to solve the Richards' equation coupled with the heat transport equation for partialy frozen soils. The project is organised to keep the numerical solver and helper functions inside the `utils/` folder and the interactive work inside notebooks such as `./notebooks/idealized_cap.ipynb`.
+This repository contains several notebooks and utility modules used to solve the Richards equation coupled with the heat transport equation for partially frozen soils. The project is organised to keep the numerical solver and helper functions inside the `utils/` folder and the interactive work inside notebooks such as `notebooks/idealized/Idealized_cap.ipynb`.
 
 Repository structure
 --------------------
 
-- `figures`- containes all published figures (except the overview figure created with Affinity Designer).-
-- `input`- interpolations are saved here in pickle files (due to their large size, they can not be pushed to github, use ./notebook/creating_figures/compare_param.ipynb to recreate them), along with the ER5-land derived forcing containg temperature and q_inf data.
-- `notebooks/` - here all Jupyter notebooks are stored 
-  - `creating_figures` - containing notebooks used for creating the figures stored under `figures/`.
-  - `idealized` - containes 5 notebookes (one for each parametrization) that were used to create the idealized simulations
-  - `simulation` - containes 5 notebookes (one for each parametrization) that were used to create the ERA5-land simulations
-  - `spinup` - containes 5 notebookes (one for each parametrization) that were used to create the spinup simulations
-  - `supplementary` - containes two notebooks, one for the simulation run of the synthetic case simulated for the supplementary material and one for creating the figrue and the mass balance calculation. 
+- `figures/` - contains all published figures (except the overview figure created with Affinity Designer).
+- `input/` - interpolations are saved here as pickle files (due to their large size, they cannot be pushed to GitHub; use `notebooks/creating_figures/compare_param.ipynb` to recreate them), along with the ERA5-Land derived forcing containing temperature and q_inf data.
+- `notebooks/` - all Jupyter notebooks are stored here:
+  - `creating_figures/` - contains the notebooks used for creating the figures stored under `figures/`.
+  - `idealized/` - contains 5 notebooks (one for each parametrization) that were used to create the idealized simulations.
+  - `simulation/` - contains 5 notebooks (one for each parametrization) that were used to create the ERA5-Land simulations.
+  - `spinup/` - contains 5 notebooks (one for each parametrization) that were used to create the spinup simulations.
+  - `supplementary/` - contains two notebooks: one for running the synthetic case simulated for the supplementary material, and one for creating the figure and calculating the mass balance.
 - `utils/` - Python package with helper modules:
-  - `geometry.py` - main file containing the definition of a Geom() class used for simulations.
-  - `parameter_interpolation.py`- interpolation of hydraulic parameterizations along temperature and capillary head.
-  - `parse_permafoam_output.py`- containes helper function converting permaFoam output to pickle file.
+  - `geometry.py` - main file containing the definition of the `Geom()` class used for simulations.
+  - `parameter_interpolation.py` - interpolation of hydraulic parametrizations along temperature and capillary head.
+  - `parse_permafoam_output.py` - contains a helper function converting permaFoam output to a pickle file.
   - `petrophysic.py` - petrophysical relations (e.g. water retention, frozen fraction).
-  - `petrophysics_capillaryBundles.py` - petrophysical relations for the capillary bundle model. 
-  - `plotting_utils.py`- python functions that were used to create figures for publication. 
+  - `petrophysics_capillaryBundles.py` - petrophysical relations for the capillary bundle model.
+  - `plotting_utils.py` - Python functions that were used to create the figures for publication.
   - `volbal.py` - balance equation helper functions.
-  - `volbal_validation.py` - balance equation helper functions (this is the function used for the synthetic case of the supplementary material. It need to be redefined as the BCs differ from the once in volbal.py)
+  - `volbal_validation.py` - balance equation helper functions used for the synthetic case of the supplementary material. They need to be redefined because the BCs differ from the ones in `volbal.py`.
   - `__init__.py` - package initializer.
 - `docu/` - documentation folder containing the mathematical theory guide and figures. This folder will be further developed to include code documentation.
 
 Quick start
--------------------------
+-----------
 
-1. Create a Conda environment from the provided `environment.yml` file (recommended). Example using conda:
+Create a Conda environment from the provided `environment.yml` file (recommended):
 
 ```bash
 # from the repository root
 conda env create -f environment.yml
 conda activate cryorich_AD
 ```
-JAX is per default installed for CPU use, check out the JAX installation guide for GPU installation: https://github.com/google/jax#installation
+By default, JAX is installed for CPU use. For GPU support, see the JAX installation guide: https://github.com/google/jax#installation
 
-Usage notes
------------
+Parametrizations
+----------------
 
-- The utilities codes can be adapted. If you modify modules under `utils/`, make sure to restart the notebook kernel.
-- If you want to rerun the simulations created for the publication, you first need to create the interpolation files with the notebook `compare_param.ipynb` saved under `./notebooks/creating_figrues`.
-- First run the spinup period (which will be saved under `./output/spinup`), the output will be used as the initial condition for both the idealized and ERA5 simulations.
-- The simulation conducted for supplementary material is compared to a permaFoam simulation. The folder of this simulation conducted in openFoam is saved under `./output/supplementary/permaFoam`.
+Five parametrizations of the hydraulic properties of partially frozen soil are compared. The table maps the names used in the code and file names to the labels used in the publication:
+
+| Label | Description | `parametrization` in code | Notebook suffix (spinup / simulation / idealized) |
+|-------|-------------|---------------------------|---------------------------------------------------|
+| (A) | drying assumption | `drying` | `drying` / `drying` / `drying` |
+| (B) | drying assumption with impedance factor Ω = 10 | `drying_omega10` | `drying_omega10` / `drying_omega10` / `drying_omega10` |
+| (C) | impedance factor Ω = 10 | `permaFoam_omega10` | `imp10` / `imp10` / `imp_omega10` |
+| (D) | impedance factor Ω = 50 | `permaFoam_omega50` | `imp50` / `imp50` / `imp_omega50` |
+| (E) | capillary bundle model | `cap` | `cap` / `cap` / `cap` |
+
+Interpolation and output files use the name from the `parametrization` column, e.g. `input/interpolation/interpolation_permaFoam_omega10.pkl`.
+
+Steps to reproduce
+------------------
+
+To rerun the simulations of the publication, run the notebooks in the following order (`<param>` stands for one of the five parametrizations):
+
+0. *(optional, the raw and processed forcing are already included)* ERA5-Land forcing:
+   - `input/era5_land_data/download_data.ipynb` downloads ERA5-Land data ([doi:10.24381/cds.e2161bac](https://doi.org/10.24381/cds.e2161bac)). Requests are only possible per month, so the notebook is run once per month by changing `year` and `month`. Two requests are needed per month:
+     - skin temperature, snowfall, snowmelt, evaporation from bare soil and total precipitation → saved as `YY_MM.nc`
+     - skin temperature, 2 m temperature and soil temperature level 1 → saved as `T_YY_MM.nc`
+   - The download assigns a random file name to each download. The files were renamed by hand to the scheme above (e.g. `23_05.nc`, `T_23_05.nc`) and moved to `input/era5_land_data/Sweden/`.
+   - `input/era5_land_data/creat_sim_data.ipynb` → `input/era5_land_data/Sweden/spinup_2308_2311.pkl` and `sim_2312_2405.pkl`
+1. `notebooks/creating_figures/compare_param.ipynb` → `input/interpolation/interpolation_<param>.pkl`
+   (~9 GB per file, ~47 GB in total)
+2. `notebooks/spinup/0Spinup_<param>.ipynb` → `output/spinup/`
+   (the spinup output is used as the initial condition for both the ERA5 and the idealized simulations)
+3. `notebooks/simulation/1Simulate_<param>.ipynb` → `output/simulation/`
+   `notebooks/idealized/Idealized_<param>.ipynb` → `output/idealized/`
+4. `notebooks/creating_figures/visualize_results.ipynb` → `figures/`
+5. Supplementary material: `notebooks/supplementary/synthetic_case.ipynb` → `output/supplementary/`, then `notebooks/supplementary/create_supplementary_plots.ipynb` → `figures/supplementary/`.
+   The synthetic case is compared to a permaFoam simulation conducted in OpenFOAM, whose case folder is stored under `output/supplementary/permaFoam/`.
+
+If you modify modules under `utils/`, make sure to restart the notebook kernel.
 
 Documentation
 -------------
 
-The `docu/` folder contains a mathematical theory guide (derivations and explanations) and `Figures/`. 
+The `docu/` folder contains a mathematical theory guide (derivations and explanations) and `Figures/`.
