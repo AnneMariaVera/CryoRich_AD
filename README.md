@@ -22,7 +22,7 @@ Repository structure
   - `simulation/` - contains 5 notebooks (one for each parametrization) that were used to create the ERA5-Land simulations.
   - `spinup/` - contains 5 notebooks (one for each parametrization) that were used to create the spinup simulations.
   - `supplementary/` - contains two notebooks: one for running the synthetic case simulated for the supplementary material, and one for creating the figure and calculating the mass balance.
-- `utils/` - Python package with helper modules:
+- `utils/` - Python package with helper modules (If you modify modules under `utils/`, make sure to restart the notebook kernel):
   - `geometry.py` - main file containing the definition of the `Geom()` class used for simulations.
   - `parameter_interpolation.py` - interpolation of hydraulic parametrizations along temperature and capillary head.
   - `parse_permafoam_output.py` - contains a helper function converting permaFoam output to a pickle file.
@@ -66,23 +66,27 @@ Steps to reproduce
 
 To rerun the simulations of the publication, run the notebooks in the following order (`<param>` stands for one of the five parametrizations):
 
-0. ERA5-Land forcing *(optional, the forcings are already included under `input/era5_land_data/Sweden/` named `sim2312_2405.pkl` and `spinup_2308_2311.pkl`)*:
+0. ERA5-Land forcing *(optional, the forcings are already included under `input/era5_land_data/Sweden/` named `sim_2312_2405.pkl` and `spinup_2308_2311.pkl`)*:
    - `input/era5_land_data/download_data.ipynb` downloads ERA5-Land data ([doi:10.24381/cds.e2161bac](https://doi.org/10.24381/cds.e2161bac)). Requests are only possible per month, so the notebook is run once per month by changing `year` and `month`. Two requests are needed per month:
      - skin temperature, snowfall, snowmelt, evaporation from bare soil and total precipitation → saved as `YY_MM.nc`
      - skin temperature, 2 m temperature and soil temperature level 1 → saved as `T_YY_MM.nc`
    - The download assigns a random file name to each download. The files were renamed by hand to the scheme above (e.g. `23_05.nc`, `T_23_05.nc`) and moved to `input/era5_land_data/Sweden/`.
    - `input/era5_land_data/creat_sim_data.ipynb` → `input/era5_land_data/Sweden/spinup_2308_2311.pkl` and `sim_2312_2405.pkl`
-1. `notebooks/creating_figures/compare_param.ipynb` → `input/interpolation/interpolation_<param>.pkl`
-   (~9 GB per file, ~47 GB in total)
-2. `notebooks/spinup/0Spinup_<param>.ipynb` → `output/spinup/`
-   (the spinup output is used as the initial condition for both the ERA5 and the idealized simulations)
-3. `notebooks/simulation/1Simulate_<param>.ipynb` → `output/simulation/`
-   `notebooks/idealized/Idealized_<param>.ipynb` → `output/idealized/`
-4. `notebooks/creating_figures/visualize_results.ipynb` → `figures/`
-5. Supplementary material: `notebooks/supplementary/synthetic_case.ipynb` → `output/supplementary/`, then `notebooks/supplementary/create_supplementary_plots.ipynb` → `figures/supplementary/`.
-   The synthetic case is compared to a permaFoam simulation conducted in OpenFOAM, whose case folder is stored under `output/supplementary/permaFoam/`.
-
-If you modify modules under `utils/`, make sure to restart the notebook kernel.
+1. Interpolation of the hydraulic parameters:
+   - `notebooks/creating_figures/compare_param.ipynb` → `input/interpolation/interpolation_<param>.pkl`
+   - ~9 GB per file, ~47 GB in total
+2. Spinup:
+   - `notebooks/spinup/0Spinup_<param>.ipynb` → `output/spinup/`
+   - the spinup output is used as the initial condition for both the ERA5 and the idealized simulations
+3. Simulations:
+   - `notebooks/simulation/1Simulate_<param>.ipynb` → `output/simulation/`
+   - `notebooks/idealized/Idealized_<param>.ipynb` → `output/idealized/`
+4. Figures:
+   - `notebooks/creating_figures/visualize_results.ipynb` → `figures/`
+5. Supplementary material:
+   - `notebooks/supplementary/synthetic_case.ipynb` → `output/supplementary/`
+   - `notebooks/supplementary/create_supplementary_plots.ipynb` → `figures/supplementary/`
+   - the synthetic case is compared to a permaFoam simulation conducted in OpenFOAM, whose case folder is stored under `output/supplementary/permaFoam/`
 
 Documentation
 -------------
