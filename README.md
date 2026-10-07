@@ -91,4 +91,4 @@ To rerun the simulations of the publication, run the notebooks in the following 
 Documentation
 -------------
 
-The `docu/` folder contains a mathematical theory guide (derivations and explanations) and `Figures/`.
+The `docu/` folder contains a mathematical theory guide (derivations and explanations). The files were created with the use of generative AI, namely Claude (Anthropic). After using this tool/service, the author(s) reviewed and edited the content as needed and take(s) full responsibility for the content of the files containing under the docu folder.
