@@ -66,7 +66,7 @@ Steps to reproduce
 
 To rerun the simulations of the publication, run the notebooks in the following order (`<param>` stands for one of the five parametrizations):
 
-0. *(optional, the raw and processed forcing are already included)* ERA5-Land forcing:
+0. *(optional, the forcings are already included under `input/era5_land_data/Sweden/` named `sim2312:2405.pkl` and `spinup_2308_2311.pkl`)* ERA5-Land forcing:
    - `input/era5_land_data/download_data.ipynb` downloads ERA5-Land data ([doi:10.24381/cds.e2161bac](https://doi.org/10.24381/cds.e2161bac)). Requests are only possible per month, so the notebook is run once per month by changing `year` and `month`. Two requests are needed per month:
      - skin temperature, snowfall, snowmelt, evaporation from bare soil and total precipitation → saved as `YY_MM.nc`
      - skin temperature, 2 m temperature and soil temperature level 1 → saved as `T_YY_MM.nc`
