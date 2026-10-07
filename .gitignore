@@ -1,4 +1,3 @@
-*.png
 utils/__pycache__/
 utils/newtonRaphson.py
 tmp/
