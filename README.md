@@ -49,6 +49,9 @@ Usage notes
 -----------
 
 - The utilities codes can be adapted. If you modify modules under `utils/`, make sure to restart the notebook kernel.
+- If you want to rerun the simulations created for the publication, you first need to create the interpolation files with the notebook `compare_param.ipynb` saved under `./notebooks/creating_figrues`.
+- First run the spinup period (which will be saved under `./output/spinup`), the output will be used as the initial condition for both the idealized and ERA5 simulations.
+- The simulation conducted for supplementary material is compared to a permaFoam simulation. The folder of this simulation conducted in openFoam is saved under `./output/supplementary/permaFoam`.
 
 Documentation
 -------------
