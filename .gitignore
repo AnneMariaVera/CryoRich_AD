@@ -9,7 +9,5 @@ docu/.pandoc/
 .DS_Store
 docu/.DS_Store
 docu/Theory Guide to Numerical Model/.DS_Store
-input/
-output/
-figures/
 *.pdf
+*.pkl

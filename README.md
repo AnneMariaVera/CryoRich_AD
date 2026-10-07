@@ -15,7 +15,7 @@ Repository structure
 --------------------
 
 - `figures`- containes all published figures (except the overview figure created with Affinity Designer).-
-- `input`- interpolations are saved here in pickle files (reuse these to rerun simulations from the publication) along with the ER5-land derived forcing containg temperature and q_inf data.
+- `input`- interpolations are saved here in pickle files (due to their large size, they can not be pushed to github, use ./notebook/creating_figures/compare_param.ipynb to recreate them), along with the ER5-land derived forcing containg temperature and q_inf data.
 - `notebooks/` - here all Jupyter notebooks are stored 
   - `creating_figures` - containing notebooks used for creating the figures stored under `figures/`.
   - `idealized` - containes 5 notebookes (one for each parametrization) that were used to create the idealized simulations
