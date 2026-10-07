@@ -40,15 +40,6 @@ import numpy as np
 import pickle as pkl
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-
-# Defaults only -- every one of these is overridable per call.
-DEFAULT_CASE_DIR = "/usr/lib/openfoam/openfoam2412/tutorials/hydrology-main/tutorials/permaFoam/validationCase"
-DEFAULT_OUT_FILE = HERE / "parsed_fields.pkl"
-DEFAULT_FIELDS = ("T", "psi", "thetal", "thetag", "theta")
-DEFAULT_XTOT = 10.0
-
-
 def discover_times(case_dir):
     """Every integer-named subdirectory of case_dir is a checkpoint OpenFOAM wrote -- t=0 (the IC)
     plus whatever real times the adaptive timestepper actually landed on for the rest, which
@@ -117,7 +108,7 @@ def infer_dims_and_Z(ref_path, x_patch="top", z_patch="downSlope"):
     return nx, nz, Z
 
 
-def build_X(nx, nz, xtot=DEFAULT_XTOT):
+def build_X(nx, nz, xtot):
     """Uniform cell-center x coordinates, tiled over all nz rows (no x-grading in these cases)."""
     i_edges = np.linspace(0, 1, nx + 1)
     x_centers = 0.5 * (i_edges[:-1] + i_edges[1:]) * xtot
@@ -143,8 +134,8 @@ def find_geometry_reference(case_dir, times, x_patch="top", z_patch="downSlope")
     )
 
 
-def parse_permafoam_output(case_dir=DEFAULT_CASE_DIR, out_file=DEFAULT_OUT_FILE,
-                           fields=DEFAULT_FIELDS, xtot=DEFAULT_XTOT,
+def parse_permafoam_output(case_dir, out_file,
+                           fields, xtot,
                            x_patch="top", z_patch="downSlope", verbose=True):
     """Parse a permaFoam case directory into (nz, nx) arrays and (optionally) pickle the result.
 

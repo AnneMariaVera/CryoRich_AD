@@ -43,7 +43,7 @@ def combine_by_soil(soil, soil_type,soil_ids,interp_key, h_c, T):
                                     'c_i', 'c_l', 'c_a', 'c_s',
                                     'lambda_i', 'lambda_l', 'lambda_a', 'lambda_s',
                                     'H_f', 'nx', 'nz', 'dx', 'dz']))
-def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt, 
+def volbal_validation(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt, 
                              soil,soil_type, Theta_s,Theta_r, alpha, N, Ksat, H_f,
                              rho_i, rho_l, rho_a, rho_s, 
                              c_i, c_l, c_a, c_s,
@@ -139,7 +139,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     res_v, qz = vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, s, Gxi_h_old)
     hc_bc = jnp.maximum(Z[:, -1] + s * dx / 2, 0.0)
     krel_boundary = combine_by_soil(soil,soil_type,soil_ids,"k_rel_interp", hc_bc, T_new[:, -1])
-    res_h, qx = horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, Z, s, Gz_h_old,krel_boundary)
+    res_h, qx = horizontal_flux_update(qx, Ksat, htot_new, krel_new, dx, s, Gz_h_old,krel_boundary)
     res_rich += res_v + res_h
 
     # Flux at cell center, assumes equispaced grid.
@@ -212,7 +212,7 @@ def vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, s, Gxi_
     res = res.at[1:, :].add(-q_val * geofac)
     return res, qz
 
-def horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, Z, s, Gz_h, krel_boundary):
+def horizontal_flux_update(qx, Ksat, htot_new, krel_new, dx, s, Gz_h, krel_boundary):
     """
     Update horizontal fluxes and residuals.
 

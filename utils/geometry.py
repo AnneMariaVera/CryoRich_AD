@@ -5,6 +5,7 @@ jax.config.update('jax_enable_x64', True)
 import jax.numpy as jnp
 import utils.petrophysic as petro
 from utils.volbal import  volbal_cappillary_bundle
+from utils.volbal_validation import volbal_validation
 import sparsejac as sparsejac
 import interpax as ipx
 import time
@@ -236,17 +237,19 @@ class Geom():
         self.T_surface_interp = ipx.Interpolator1D(t_bc, T_surface,method=method)
         self.q_inf_interp = ipx.Interpolator1D(t_bc, q_inf,method=method)
 
-    def set_newton_params(self, restol_rich=1e-4, restol_T=1e-2, max_iter=10, min_iter=5):
+    def set_newton_params(self, atol_rich=1e-6, rtol_rich=1e-4, atol_T=1e2, rtol_T=1e-2, max_iter=10, min_iter=5):
         """
         Set parameters for the Newton-Raphson method.
         """
         print("===============   Setting Newton-Raphson parameters   =============== ")
-        print(f"Restol: {restol_rich,restol_T}")
+        print(f"Rtol: {rtol_rich,rtol_T}")
         print(f"Max Iterations: {max_iter}")
         print(f"Min Iterations: {min_iter}")
 
-        self.restol_rich = restol_rich
-        self.restol_T = restol_T
+        self.rtol_rich = rtol_rich
+        self.rtol_T = rtol_T
+        self.atol_rich = atol_rich
+        self.atol_T = atol_T
         self.max_iter = max_iter
         self.min_iter = min_iter
 
@@ -277,6 +280,199 @@ class Geom():
         self.T_old = T_init
         print("DONE: set initial conditions.")
         print("=============================================================")
+
+    def simulate_validation(self):
+        """
+        Fully coupled Richards + heat equation simulation.
+        Returns:
+            - h_total, h_c_total, theta_total: hydraulic results
+            - T_total: temperature results
+            - time_array: simulation times
+            - iter_total: NR iterations per time step
+            - normres_total: residual norm per time step
+            - res_last: residual at last step
+        """
+        # number of parameters 
+        # np = int(self.nx * self.nz)
+
+        # initial conditions:
+        t = self.t0
+        htot = self.h_tot_old
+        h_c = self.h_c_old
+        theta_l = self.theta_l_old
+        theta_i = self.theta_i_old
+        T = self.T_old
+
+        # Transform T to y = arcsinh(T/b) to improve convergence for large T variations (e.g. freezing/thawing)
+        def T_of_y(y, b=1e-1):
+            T = b * jnp.sinh(y)
+            return T
+
+        def y_of_T(T, b=1e-1):
+            y = jnp.arcsinh(T / b)
+            return y
+
+        # Lists for saving simulation outputs. Initial conditions are included as first entry.
+        h_total, h_c_total, theta_l_total, theta_i_total = [htot], [h_c], [theta_l], [theta_i]
+        T_total = [T]
+        iter_total, normres_total = [], []
+        time_array = [t]
+        
+        # Time stepping loop variables
+        t_next_save = self.save_t if self.save_t is not None else self.dt
+        cons_success = 0
+        sparsity = self.sparse_pattern
+
+        # predicator step initial values    
+        yT = y_of_T(T)
+        y_old = jnp.concatenate([htot.ravel(), yT.ravel()])
+        # y_older = y_old.copy()    
+        y_new = y_old.copy()
+        # dt_old = self.dt
+        
+        # Coupled residual function for Newton-Raphson solver. 
+        def residual_func_cap_bundle(y_new, y_old, dt, soil, soil_type, Theta_s,Theta_r, alpha, N, Ksat, H_f, 
+                                     rho_i, rho_l, rho_a, rho_s, 
+                                     c_i, c_l, c_a, c_s,
+                                     lambda_i, lambda_l, lambda_a, lambda_s,
+                                     q_inf, T_surface, Z,  nz, nx, dx, dx_tilde, dz):
+            """
+            Coupled residual function for [htot, T].
+            y_new = [htot_new.ravel(), T_new.ravel()]
+            y_old = [htot_old.ravel(), T_old.ravel()]
+            """
+            np = nx * nz
+            htot_new = jnp.reshape(y_new[:np], (nz, nx))
+            yT_new   = jnp.reshape(y_new[np:], (nz, nx))
+
+            htot_old = jnp.reshape(y_old[:np], (nz, nx))
+            yT_old   = jnp.reshape(y_old[np:], (nz, nx))
+
+            T_new = T_of_y(yT_new)
+            T_old = T_of_y(yT_old)
+
+            # Head and Heat residual (advection uses fluxes from h) 
+            res_total, _, _, _, _, _, _, _ = volbal_validation(
+                    T_new, T_old, htot_new, htot_old, q_inf, T_surface, 
+                    dt, soil, soil_type, Theta_s,Theta_r, alpha, N, Ksat, H_f, 
+                    rho_i, rho_l, rho_a, rho_s, 
+                    c_i, c_l, c_a, c_s,
+                    lambda_i, lambda_l, lambda_a, lambda_s,  
+                    Z,  nz, nx, dx, dx_tilde, dz
+            )
+            return res_total
+        
+        # Sparse Jacobian for coupled system
+        jacobian_func = sparsejac.jacfwd(
+            residual_func_cap_bundle,
+            sparsity=sparsity
+        )
+
+        # save initial fluxes
+        _, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_s, theta_i_s = volbal_validation(T, T, htot, htot, self.q_inf_interp(t)*jnp.ones((self.nx,)), self.T_surface_interp(t)*jnp.ones((self.nx,)), 
+                                                                                                       self.dt, self.soil, self.soil_type, self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat, self.H_f, 
+                                                                                                       self.rho_i, self.rho_l, self.rho_a, self.rho_s, 
+                                                                                                       self.c_i, self.c_l, self.c_a, self.c_s,
+                                                                                                       self.lambda_i, self.lambda_l, self.lambda_a, self.lambda_s, 
+                                                                                                       self.Z, self.nz, self.nx, self.dx, self.dx_tilde, self.dz)
+        qz_array = [qz]
+        qx_array = [qx]
+        qz_centered_array = [qz_centered]
+        qx_centered_array = [qx_centered]
+        q_runoff_array = [q_runoff]
+
+        print("Starting simulation ...\n" \
+        "==============================================================================")
+        while t < self.t_end:
+
+            repeat = True
+            dt = self.dt
+            # Adaptive time stepping loop
+            while repeat:
+                # dt actually used for this Newton solve (dt may still grow below, but that
+                # only takes effect for the *next* step, not the one just solved)
+                dt_solved = dt
+                # predictor step for T using previous two time steps (for better convergence of coupled system)
+                # Call coupled Newton-Raphson
+                y_trial, iter_count, norm_rich, norm_T, converged = self.newtonRaphson_cap_bundle(y_old, y_old, t, dt, residual_func_cap_bundle, jacobian_func, self.atol_rich, self.rtol_rich, self.atol_T, self.rtol_T, self.max_iter)
+                normres = jnp.sqrt(norm_rich**2 + norm_T**2)
+
+                # Adaptive time step control
+                if (iter_count >= self.max_iter and not converged) or jnp.isnan(norm_rich) or jnp.isnan(norm_T) or jnp.isinf(norm_rich) or jnp.isinf(norm_T):
+                    dt /= 2
+                    if dt < 1e-6:
+                        print("Time step too small. Simulation diverging. Returning saved variables.")
+                        return h_total, h_c_total, theta_l_total,theta_i_total, T_total, q_runoff_array, qx_array,qz_array,qx_centered_array,qz_centered_array, time_array, iter_total, normres_total
+                    try:
+                        print(f"Max iterations reached with ||res_rich||={norm_rich:.3e}, ||res_T||={norm_T:.3e}. Halving dt to {dt}")
+                    except TypeError:
+                        # see note above on the ||res||_inf print further below
+                        print(f"Max iterations reached. Halving dt to {dt}")
+                    repeat = True
+                    cons_success = 0
+                    
+                elif iter_count <= self.min_iter and cons_success >= 2:
+                    dt = min(dt * 1.2, self.maxdt)
+                    # print(f"Few iterations. Doubling dt to {self.dt}")
+                    repeat = False
+                    cons_success = 0
+
+                elif iter_count <= self.min_iter and cons_success < 2:
+                    repeat = False
+                    cons_success += 1
+
+                else:
+                    cons_success = 0
+                    repeat = False
+            
+            try:
+                print(f"Time {t/24/3600:.2f} d, dt={dt_solved:.2e}, NR iterations={iter_count}, ||res||_inf={normres:.3e}")
+            except TypeError:
+                # normres can be a JVPTracer/JaxprTracer when simulate_cap_bundle is run
+                # under jax.jvp/grad (e.g. for parameter sensitivity analysis); its value
+                # can't be formatted with :.3e in that case, so just drop it from the line.
+                print(f"Time {t/24/3600:.2f} d, dt={dt_solved:.2e}, NR iterations={iter_count}")
+
+            # Extract updated htot and T
+            y_new = y_trial
+            y_old = y_new.copy()
+            htot_new = jnp.reshape(y_new[:self.np], (self.nz, self.nx))
+            yT_new = jnp.reshape(y_new[self.np:], (self.nz, self.nx))
+            T_new  = T_of_y(yT_new)
+
+            t += dt_solved
+            self.dt = dt
+
+            # Store outputs at save times
+            if t >= t_next_save:
+                h_c = jnp.maximum(self.Z - htot_new, 0.0)
+                T_old = T_of_y(jnp.reshape(y_old[self.np:], (self.nz, self.nx)))
+                htot_old = jnp.reshape(y_old[:self.np], (self.nz, self.nx))
+                                                                                                                
+                _, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_s, theta_i_s = volbal_validation(T_new, T_old,
+                                                                                                               htot_new, htot_old, self.q_inf_interp(t)*jnp.ones((self.nx,)), self.T_surface_interp(t)*jnp.ones((self.nx,)), dt_solved,
+                                                                                                               self.soil, self.soil_type, self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat, self.H_f,
+                                                                                                               self.rho_i, self.rho_l, self.rho_a, self.rho_s,
+                                                                                                               self.c_i, self.c_l, self.c_a, self.c_s,
+                                                                                                               self.lambda_i, self.lambda_l, self.lambda_a, self.lambda_s,
+                                                                                                               self.Z, self.nz, self.nx, self.dx, self.dx_tilde, self.dz)
+                h_total.append(htot_new)
+                h_c_total.append(h_c)
+                theta_l_total.append(theta_l_s)
+                theta_i_total.append(theta_i_s)
+                T_total.append(T_new)
+                iter_total.append(iter_count)
+                normres_total.append(normres)
+                time_array.append(t)
+                q_runoff_array.append(q_runoff)
+                qz_array.append(qz)
+                qx_array.append(qx)
+                qz_centered_array.append(qz_centered)
+                qx_centered_array.append(qx_centered)
+                t_next_save += self.save_t if self.save_t is not None else self.dt
+
+        return h_total, h_c_total, theta_l_total,theta_i_total, T_total, q_runoff_array, qx_array,qz_array,qx_centered_array,qz_centered_array, time_array, iter_total, normres_total
+
 
     def simulate_cap_bundle(self):
         """
@@ -391,7 +587,7 @@ class Geom():
                 dt_solved = dt
                 # predictor step for T using previous two time steps (for better convergence of coupled system)
                 # Call coupled Newton-Raphson
-                y_trial, iter_count, norm_rich, norm_T, converged = self.newtonRaphson_cap_bundle(y_old, y_old, t, dt, residual_func_cap_bundle, jacobian_func, self.restol_rich, self.restol_T, self.max_iter)
+                y_trial, iter_count, norm_rich, norm_T, converged = self.newtonRaphson_cap_bundle(y_old, y_old, t, dt, residual_func_cap_bundle, jacobian_func, self.atol_rich, self.rtol_rich, self.atol_T, self.rtol_T, self.max_iter)
                 normres = jnp.sqrt(norm_rich**2 + norm_T**2)
 
                 # Adaptive time step control
@@ -470,7 +666,7 @@ class Geom():
 
         return h_total, h_c_total, theta_l_total,theta_i_total, T_total, q_runoff_array, qx_array,qz_array,qx_centered_array,qz_centered_array, time_array, iter_total, normres_total
     
-    def newtonRaphson_cap_bundle(self, y0, y_old, t, dt, residual_func, jacobian_func, restol_rich=1e-4, restol_T = 1e-2, max_iter=10):
+    def newtonRaphson_cap_bundle(self, y0, y_old, t, dt, residual_func, jacobian_func, atol_rich =1e-6, rtol_rich=1e-4, atol_T=1e2, rtol_T = 1e-2, max_iter=10):
         """
         Newton-Raphson solver for coupled [htot, T].
         A component is accepted once its residual is either below the tolerance
@@ -486,10 +682,10 @@ class Geom():
         y_new, norm_rich0, norm_T0 = self.body_fun_cap_bundle(y0, y_old, t, dt, residual_func, jacobian_func)
         norm_rich, norm_T = norm_rich0, norm_T0
         iter_count = 1
-        while not (is_converged(norm_rich, norm_rich0, 1e-4, restol_rich) and is_converged(norm_T, norm_T0,1e2, restol_T)) and (iter_count < max_iter):
+        while not (is_converged(norm_rich, norm_rich0, atol_rich, rtol_rich) and is_converged(norm_T, norm_T0,atol_T, rtol_T)) and (iter_count < max_iter):
             y_new, norm_rich, norm_T = self.body_fun_cap_bundle(y_new, y_old, t, dt, residual_func, jacobian_func)
             iter_count += 1
-        converged = is_converged(norm_rich, norm_rich0, 1e-4, restol_rich) and is_converged(norm_T, norm_T0, 1e2, restol_T)
+        converged = is_converged(norm_rich, norm_rich0, atol_rich, rtol_rich) and is_converged(norm_T, norm_T0, atol_T, rtol_T)
         return y_new, iter_count, norm_rich, norm_T, converged
 
     def body_fun_cap_bundle(

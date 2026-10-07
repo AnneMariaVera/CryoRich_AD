@@ -9,54 +9,48 @@ Email: anne.hermann@uni-tuebingen.de
 Short description
 -----------------
 
-This repository contains two Jupyter notebooks and utility modules used to solve the Richards' equation coupled with the heat transport equation for partly frozen soils. The project is organised to keep the numerical solver and helper functions inside a small `utils/` package and the interactive work inside notebooks such as `RichardsSolver_AD.ipynb`.
+This repository contains several notebooks and utility modules used to solve the Richards' equation coupled with the heat transport equation for partialy frozen soils. The project is organised to keep the numerical solver and helper functions inside the `utils/` folder and the interactive work inside notebooks such as `./notebooks/idealilzed_cap.ipynb`.
 
 Repository structure
 --------------------
 
-- `RichardsSolver_AD.ipynb` - Jupyter notebook containing an example run for a pure Richards' solver (not coupled to the heat transport).
-- `CoupledSolver_AD.ipynb` - Jupyter notebook containing an example run for the coupled Richards' and heat transport solver.
+- `figures`- containes all published figures (except the overview figure created with Affinity Designer).-
+- `input`- interpolations are saved here in pickle files (reuse these to rerun simulations from the publication) along with the ER5-land derived forcing containg temperature and q_inf data.
+- `notebooks/` - here all Jupyter notebooks are stored 
+  - `creating_figures` - containing notebooks used for creating the figures stored under `figures/`.
+  - `idealized` - containes 5 notebookes (one for each parametrization) that were used to create the idealized simulations
+  - `simulation` - containes 5 notebookes (one for each parametrization) that were used to create the ERA5-land simulations
+  - `spinup` - containes 5 notebookes (one for each parametrization) that were used to create the spinup simulations
+  - `supplementary` - containes two notebooks, one for the simulation run of the synthetic case simulated for the supplementary material and one for creating the figrue and the mass balance calculation. 
 - `utils/` - Python package with helper modules:
   - `geometry.py` - main file containing the definition of a Geom() class used for simulations.
+  - `parameter_interpolation.py`- interpolation of hydraulic parameterizations along temperature and capillary head.
   - `petrophysic.py` - petrophysical relations (e.g. water retention, frozen fraction).
+  - `petrophysic_capillaryBundles.py` - petrophysical relations for the capillary bundle model. 
+  - `plotting_utils.py`- python functions that were used to create figures for publication. 
   - `volbal.py` - balance equation helper functions.
+  - `volbal_validation.py` - balance equation helper functions (this is the function used for the synthetic case of the supplementary material. It need to be redefined as the BCs differ from the once in volbal.py)
   - `__init__.py` - package initializer.
 - `docu/` - documentation folder containing the mathematical theory guide and figures. This folder will be further developed to include code documentation.
 
 Quick start
 -------------------------
 
-1. Create and activate a Conda environment (recommended). Example using conda:
+1. Create a Conda environment from the provided `environment.yml` file (recommended). Example using conda:
 
 ```bash
 # from the repository root
-conda create -n frozensoil python=3.10 -y
-conda activate frozensoil
+conda create --file environment.yml
+conda activate cryorich_AD
 ```
-
-2. Install typical scientific Python packages. There is no `frozensoil.env` in this repo by default, but the notebook and utilities expect packages such as:
-
-```bash
-conda install numpy scipy matplotlib jupyterlab ipykernel -c conda-forge
-```
-
-This code makes use of automatic-differentiation via JAX. JAX install commands depend on your platform (CPU, GPU, or macOS/Apple Silicon) and on the selected versions of `jax`/`jaxlib`. See the official JAX installation guide for the correct command for your system:
-
-- JAX installation guide: https://github.com/google/jax#installation
+JAX is per default installed for CPU use, check out the JAX installation guide for GPU installation: https://github.com/google/jax#installation
 
 Usage notes
 -----------
 
-- The utilities codes can be adapted. If you modify modules under `utils/`, restart the notebook kernel.
+- The utilities codes can be adapted. If you modify modules under `utils/`, make sure to restart the notebook kernel.
 
 Documentation
 -------------
 
-The `docu/` folder contains a mathematical theory guide (derivations and explanations) and `Figures/`. Over time this folder will be expanded with futher markdown files on code documentation.
-
-
-TODOs:
-------------------------------
-
-- Add a `environment.yml` to pin dependencies.
-- Add capillary bundel model
+The `docu/` folder contains a mathematical theory guide (derivations and explanations) and `Figures/`. 

@@ -10,6 +10,7 @@ dependencies:
   - netcdf4
   - jupyterlab
   - ipykernel
+  - cdsapi>=0.7.7
   - pip
   - pip:
       - jax

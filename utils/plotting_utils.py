@@ -988,3 +988,131 @@ def create_animation_streamlines(
     )
 
     return ani, fig, ax
+
+def make_comparison_figure(X,Z,theta_l_cr, theta_i_cr, T_cr, theta_l_pf, theta_i_pf, T_pf, time, time_index=-1, x_cut=-1, cmap='RdBu_r'):
+    fig, axs = plt.subplots(figsize=(PAGE_WIDTH_CM*cm,15*cm), nrows=3, ncols=2, constrained_layout=True)
+    fig.suptitle(f"simulation time {np.round(time[time_index]/24/60/60, 0)} d", fontsize=12)
+
+    theta_l_diff = theta_l_cr[time_index][:,:] - theta_l_pf[time_index]
+    theta_i_diff = theta_i_cr[time_index][:,:] - theta_i_pf[time_index]
+    T_diff = T_cr[time_index][:,:] - T_pf[time_index]
+
+    print(f"max abs theta_l diff: {np.round(np.max(np.abs(theta_l_diff)), 3)}")
+    print(f"max abs theta_i diff: {np.round(np.max(np.abs(theta_i_diff)), 3)}")
+    print(f"max abs T diff: {np.round(np.max(np.abs(T_diff)), 3)}")
+
+    for ax in axs.flatten():
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_ylabel('z [m]')
+
+    ix_cut = np.argmin(np.abs(x_cut - X[0,:]))
+
+    vmax_theta_l = np.max(np.abs(theta_l_diff))
+    cbar0 = axs[0,0].pcolormesh(X,Z,theta_l_diff, cmap=cmap, shading='gouraud',vmin=-vmax_theta_l, vmax=vmax_theta_l)
+    axs[0,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
+    axs[0,0].spines["bottom"].set_visible(False)
+    axs[0,0].axes.get_xaxis().set_visible(False)
+    axs[0,1].plot(theta_l_cr[time_index][:,ix_cut], Z[:,ix_cut], label='cryorich')
+    axs[0,1].plot(theta_l_pf[time_index][:,ix_cut], Z[:,ix_cut],":", label='permaFoam')
+    axs[0,1].set_xlabel(r'$\theta_l$ [-]')
+    axs[0,1].legend(loc = "upper center", frameon=False)
+    fig.colorbar(cbar0, ax=axs[0,0], orientation='vertical', label=r'$\Delta \theta_l$ [-]')
+
+    vmax_theta_i = np.max(np.abs(theta_i_diff))
+    cbar1 = axs[1,0].pcolormesh(X,Z,theta_i_diff, cmap=cmap, shading='gouraud',vmin=-vmax_theta_i, vmax=vmax_theta_i)
+    axs[1,0].spines["bottom"].set_visible(False)
+    axs[1,0].axes.get_xaxis().set_visible(False)
+    axs[1,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
+    axs[1,1].plot(theta_i_cr[time_index][:,ix_cut], Z[:,ix_cut], label='cryorich')
+    axs[1,1].plot(theta_i_pf[time_index][:,ix_cut], Z[:,ix_cut],":", label='permaFoam')
+    axs[1,1].set_xlabel(r'$\theta_i$ [-]')
+    fig.colorbar(cbar1, ax=axs[1,0], orientation='vertical', label=r'$\Delta \theta_i$ [-]')
+
+    vmax_T = np.max(np.abs(T_diff))
+    cbar2 = axs[2,0].pcolormesh(X,Z,T_diff, cmap=cmap, shading='gouraud',vmin=-vmax_T, vmax=vmax_T)
+    axs[2,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
+    axs[2,0].set_xlabel('x [m]')
+    axs[2,1].plot(T_cr[time_index][:,ix_cut], Z[:,ix_cut], label='cryorich')
+    axs[2,1].plot(T_pf[time_index][:,ix_cut], Z[:,ix_cut],":", label='permaFoam')
+    axs[2,1].set_xlabel('T [°C]')
+    fig.colorbar(cbar2, ax=axs[2,0], orientation='vertical', label=r'$\Delta T$ [°C]')
+
+    return fig,axs
+
+def restrict(f, n=2):
+    """Average fine nxn blocks onto coarse cells (cell-centred, conservative)."""
+    nz, nx = f.shape
+    return np.asarray(f).reshape(nz // n, n, nx // n, n).mean(axis=(1, 3))
+
+def make_resolution_figure(X_c,Z_c,X_f,Z_f,theta_l_c, theta_i_c, T_i_c, theta_l_f, theta_i_f, T_i_f, time_c, time_index_c=-1, time_index_f=-1, x_cut=-1, cmap='RdBu_r'):
+    fig, axs = plt.subplots(figsize=(PAGE_WIDTH_CM*cm,15*cm), nrows=3, ncols=2, constrained_layout=True)
+    fig.suptitle(f"simulation time {np.round(time_c[time_index_c]/24/60/60, 0)} d", fontsize=12)
+
+    if theta_l_c[time_index_c].shape[0] > theta_l_f[time_index_f].shape[0]:
+        n = theta_l_c[time_index_c].shape[0] // theta_l_f[time_index_f].shape[0]
+        th_l_c = restrict(theta_l_c[time_index_c], n=n)   
+        th_l_f = np.asarray(theta_l_f[time_index_f])
+        th_i_c = restrict(theta_i_c[time_index_c], n=n) 
+        th_i_f = np.asarray(theta_i_f[time_index_f])
+        T_c = restrict(T_i_c[time_index_c], n=n)
+        T_f = np.asarray(T_i_f[time_index_f])
+        X = X_f
+        Z = Z_f
+
+    else:
+        n = theta_l_f[time_index_f].shape[0] // theta_l_c[time_index_c].shape[0]
+        th_l_f = restrict(theta_l_f[time_index_f], n=n)
+        th_l_c = np.asarray(theta_l_c[time_index_c])
+        th_i_f = restrict(theta_i_f[time_index_f], n=n)
+        th_i_c = np.asarray(theta_i_c[time_index_c])
+        T_f = restrict(T_i_f[time_index_f], n=n)
+        T_c = np.asarray(T_i_c[time_index_c])
+        X = X_c
+        Z = Z_c
+    theta_l_diff = th_l_c - th_l_f
+    theta_i_diff = th_i_c - th_i_f
+    T_diff  = T_c - T_f    
+
+    print(f"max abs theta_l diff: {np.round(np.max(np.abs(theta_l_diff)), 3)}")
+    print(f"max abs theta_i diff: {np.round(np.max(np.abs(theta_i_diff)), 3)}")
+    print(f"max abs T diff: {np.round(np.max(np.abs(T_diff)), 3)}")
+
+    for ax in axs.flatten():
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_ylabel('z [m]')
+
+    ix_cut = np.argmin(np.abs(x_cut - X[0,:]))
+
+    vmax_theta_l = np.max(np.abs(theta_l_diff))
+    cbar0 = axs[0,0].pcolormesh(X,Z,theta_l_diff, cmap=cmap, shading='gouraud',vmin=-vmax_theta_l, vmax=vmax_theta_l)
+    axs[0,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
+    axs[0,0].spines["bottom"].set_visible(False)
+    axs[0,0].axes.get_xaxis().set_visible(False)
+    axs[0,1].plot(th_l_c[:,ix_cut], Z[:,ix_cut], label=r'$\Delta x=0.2$m, $\Delta z=0.005$m')
+    axs[0,1].plot(th_l_f[:,ix_cut], Z[:,ix_cut],":", label=r'$\Delta x=0.1$m, $\Delta z=0.0025$m')
+    axs[0,1].set_xlabel(r'$\theta_l$ [-]')
+    axs[0,1].legend(loc = "upper center", frameon=False)
+    fig.colorbar(cbar0, ax=axs[0,0], orientation='vertical', label=r'$\Delta \theta_l$ [-]')
+
+    vmax_theta_i = np.max(np.abs(theta_i_diff))
+    cbar1 = axs[1,0].pcolormesh(X,Z,theta_i_diff, cmap=cmap, shading='gouraud',vmin=-vmax_theta_i, vmax=vmax_theta_i)
+    axs[1,0].spines["bottom"].set_visible(False)
+    axs[1,0].axes.get_xaxis().set_visible(False)
+    axs[1,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
+    axs[1,1].plot(th_i_c[:,ix_cut], Z[:,ix_cut], label=r'$\Delta x=0.2$m, $\Delta z=0.005$m')
+    axs[1,1].plot(th_i_f[:,ix_cut], Z[:,ix_cut],":", label=r'$\Delta x=0.1$m, $\Delta z=0.0025$m')
+    axs[1,1].set_xlabel(r'$\theta_i$ [-]')
+    fig.colorbar(cbar1, ax=axs[1,0], orientation='vertical', label=r'$\Delta \theta_i$ [-]')
+
+    vmax_T = np.max(np.abs(T_diff))
+    cbar2 = axs[2,0].pcolormesh(X,Z,T_diff, cmap=cmap, shading='gouraud',vmin=-vmax_T, vmax=vmax_T)
+    axs[2,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
+    axs[2,0].set_xlabel('x [m]')
+    axs[2,1].plot(T_c[:,ix_cut], Z[:,ix_cut], label=r'$\Delta x=0.2$m, $\Delta z=0.005$m')
+    axs[2,1].plot(T_f[:,ix_cut], Z[:,ix_cut],":", label=r'$\Delta x=0.1$m, $\Delta z=0.0025$m')
+    axs[2,1].set_xlabel('T [°C]')
+    fig.colorbar(cbar2, ax=axs[2,0], orientation='vertical', label=r'$\Delta T$ [°C]')
+
+    return fig,axs

@@ -18,8 +18,8 @@ def interpolate_parameter(Se, T, soil_type, filename, parametrization, method='m
         return interpolate_parameter_permaFoam_50(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
     elif parametrization == "drying_omega10":
         return interpolate_parameter_drying_omega10(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
-    elif parametrization == "validation":
-        return interpolate_parameter_validation(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
+    elif parametrization == "permaFoam_synthetic_case":
+        return interpolate_parameter_permaFoam_synthetic_case(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
     else:
         raise ValueError(f"Unknown parametrization: {parametrization}") 
     
@@ -356,7 +356,7 @@ def interpolate_parameter_permaFoam_10(Se, T, soil_type, filename, method='monot
     
     return soil_type
 
-def interpolate_parameter_validation(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
+def interpolate_parameter_permaFoam_synthetic_case(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
     # assert vals.shape == (len(hc), len(T)), f"vals should have shape ({len(hc)}, {len(T)})"
     # assert jnp.all(hc == jnp.sort(hc)), "hc should be sorted in ascending order"
     # assert jnp.all(T == jnp.sort(T)), "T should be sorted in ascending order"
