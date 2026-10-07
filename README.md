@@ -9,7 +9,7 @@ Email: anne.hermann@uni-tuebingen.de
 Short description
 -----------------
 
-This repository contains several notebooks and utility modules used to solve the Richards' equation coupled with the heat transport equation for partialy frozen soils. The project is organised to keep the numerical solver and helper functions inside the `utils/` folder and the interactive work inside notebooks such as `./notebooks/idealilzed_cap.ipynb`.
+This repository contains several notebooks and utility modules used to solve the Richards' equation coupled with the heat transport equation for partialy frozen soils. The project is organised to keep the numerical solver and helper functions inside the `utils/` folder and the interactive work inside notebooks such as `./notebooks/idealized_cap.ipynb`.
 
 Repository structure
 --------------------
@@ -25,8 +25,9 @@ Repository structure
 - `utils/` - Python package with helper modules:
   - `geometry.py` - main file containing the definition of a Geom() class used for simulations.
   - `parameter_interpolation.py`- interpolation of hydraulic parameterizations along temperature and capillary head.
+  - `parse_permafoam_output.py`- containes helper function converting permaFoam output to pickle file.
   - `petrophysic.py` - petrophysical relations (e.g. water retention, frozen fraction).
-  - `petrophysic_capillaryBundles.py` - petrophysical relations for the capillary bundle model. 
+  - `petrophysics_capillaryBundles.py` - petrophysical relations for the capillary bundle model. 
   - `plotting_utils.py`- python functions that were used to create figures for publication. 
   - `volbal.py` - balance equation helper functions.
   - `volbal_validation.py` - balance equation helper functions (this is the function used for the synthetic case of the supplementary material. It need to be redefined as the BCs differ from the once in volbal.py)
@@ -40,7 +41,7 @@ Quick start
 
 ```bash
 # from the repository root
-conda create --file environment.yml
+conda env create -f environment.yml
 conda activate cryorich_AD
 ```
 JAX is per default installed for CPU use, check out the JAX installation guide for GPU installation: https://github.com/google/jax#installation

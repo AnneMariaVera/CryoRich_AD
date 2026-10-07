@@ -11,3 +11,4 @@ docu/.DS_Store
 docu/Theory Guide to Numerical Model/.DS_Store
 *.pdf
 *.pkl
+!input/era5_land_data/Sweden/*.pkl
