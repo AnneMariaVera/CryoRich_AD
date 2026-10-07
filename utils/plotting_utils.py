@@ -41,8 +41,8 @@ PAGE_HEIGHT_CM = 22.41
 parametrisation_STYLE = {
     "drying":             {"color": "#0072B2", "linestyle": "-"},        # blue
     "drying_omega10":     {"color": "#56B4E9", "linestyle": "--"},       # sky blue
-    "permaFoam_omega10":  {"color": "#D55E00", "linestyle": "-."},       # vermillion
-    "permaFoam_omega50":  {"color": "#E69F00", "linestyle": ":"},        # orange
+    "imp10":              {"color": "#D55E00", "linestyle": "-."},       # vermillion
+    "imp50":              {"color": "#E69F00", "linestyle": ":"},        # orange
     "cap":                {"color": "#009E73", "linestyle": (0, (3, 1, 1, 1))},  # bluish green
 }
 
@@ -52,8 +52,8 @@ def parametrisation_style(parametrisation):
 def parametrisation_label(parametrisation):
     return {
         "drying": "(A) drying assumption",
-        "permaFoam_omega10": r"(B) imp. factor, $\Omega=10$",
-        "permaFoam_omega50": r"(C) imp. factor, $\Omega=50$",
+        "imp10": r"(B) imp. factor, $\Omega=10$",
+        "imp50": r"(C) imp. factor, $\Omega=50$",
         "cap": "(D) capillary bundle model",
         "drying_omega10": r"(E) drying assumption, with imp. factor $\Omega=10$",
     }.get(parametrisation)
@@ -61,8 +61,8 @@ def parametrisation_label(parametrisation):
 def parametrisation_label_leg(parametrisation):
     return {
         "drying": "(A) drying assumption",
-        "permaFoam_omega10": r"(C) imp. factor, $\Omega=10$",
-        "permaFoam_omega50": r"(D) imp. factor, $\Omega=50$",
+        "imp10": r"(C) imp. factor, $\Omega=10$",
+        "imp50": r"(D) imp. factor, $\Omega=50$",
         "cap": "(E) capillary bundle model",
         "drying_omega10": r"(B) drying assumption, with imp. factor $\Omega=10$",
     }.get(parametrisation)

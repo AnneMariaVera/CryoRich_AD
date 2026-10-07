@@ -49,24 +49,26 @@ By default, JAX is installed for CPU use. For GPU support, see the JAX installat
 Parametrizations
 ----------------
 
-Five parametrizations of the hydraulic properties of partially frozen soil are compared. The table maps the names used in the code and file names to the labels used in the publication:
+Five parametrizations of the hydraulic properties of partially frozen soil are compared. The table maps the names used in the code to the labels used in the publication:
 
-| Label | Description | `parametrization` in code | Notebook suffix (spinup / simulation / idealized) |
-|-------|-------------|---------------------------|---------------------------------------------------|
-| (A) | drying assumption | `drying` | `drying` / `drying` / `drying` |
-| (B) | drying assumption with impedance factor Ω = 10 | `drying_omega10` | `drying_omega10` / `drying_omega10` / `drying_omega10` |
-| (C) | impedance factor Ω = 10 | `permaFoam_omega10` | `imp10` / `imp10` / `imp_omega10` |
-| (D) | impedance factor Ω = 50 | `permaFoam_omega50` | `imp50` / `imp50` / `imp_omega50` |
-| (E) | capillary bundle model | `cap` | `cap` / `cap` / `cap` |
+| Label | Description | Name in code (`<param>`) |
+|-------|-------------|--------------------------|
+| (A) | drying assumption | `drying` |
+| (B) | drying assumption with impedance factor Ω = 10 | `drying_omega10` |
+| (C) | impedance factor Ω = 10 | `imp10` |
+| (D) | impedance factor Ω = 50 | `imp50` |
+| (E) | capillary bundle model | `cap` |
 
-Interpolation and output files use the name from the `parametrization` column, e.g. `input/interpolation/interpolation_permaFoam_omega10.pkl`.
+The same name is used for the `parametrization` variable, the notebook names and all interpolation and output files, e.g. `notebooks/spinup/0Spinup_imp10.ipynb` → `output/spinup/spinup_imp10.pkl`.
 
 Steps to reproduce
 ------------------
 
 To rerun the simulations of the publication, run the notebooks in the following order (`<param>` stands for one of the five parametrizations):
 
-0. *(optional, the forcings are already included under `input/era5_land_data/Sweden/` named `sim2312:2405.pkl` and `spinup_2308_2311.pkl`)* ERA5-Land forcing:
+0. *(optional, the forcings are already included under `input/era5_land_data/Sweden/` named `sim2312_2405.pkl` and `spinup_2308_2311.pkl`)*
+
+ERA5-Land forcing:
    - `input/era5_land_data/download_data.ipynb` downloads ERA5-Land data ([doi:10.24381/cds.e2161bac](https://doi.org/10.24381/cds.e2161bac)). Requests are only possible per month, so the notebook is run once per month by changing `year` and `month`. Two requests are needed per month:
      - skin temperature, snowfall, snowmelt, evaporation from bare soil and total precipitation → saved as `YY_MM.nc`
      - skin temperature, 2 m temperature and soil temperature level 1 → saved as `T_YY_MM.nc`

@@ -12,10 +12,10 @@ def interpolate_parameter(Se, T, soil_type, filename, parametrization, method='m
         return interpolate_parameter_cap(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
     elif parametrization == "drying":
         return interpolate_parameter_drying(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
-    elif parametrization == "permaFoam_omega10":
-        return interpolate_parameter_permaFoam_10(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
-    elif parametrization == "permaFoam_omega50":
-        return interpolate_parameter_permaFoam_50(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
+    elif parametrization == "imp10":
+        return interpolate_parameter_imp10(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
+    elif parametrization == "imp50":
+        return interpolate_parameter_imp50(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
     elif parametrization == "drying_omega10":
         return interpolate_parameter_drying_omega10(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
     elif parametrization == "permaFoam_synthetic_case":
@@ -220,7 +220,7 @@ def interpolate_parameter_drying_omega10(Se, T, soil_type, filename, method='mon
     
     return soil_type
 
-def interpolate_parameter_permaFoam_50(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
+def interpolate_parameter_imp50(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
     # assert vals.shape == (len(hc), len(T)), f"vals should have shape ({len(hc)}, {len(T)})"
     # assert jnp.all(hc == jnp.sort(hc)), "hc should be sorted in ascending order"
     # assert jnp.all(T == jnp.sort(T)), "T should be sorted in ascending order"
@@ -288,7 +288,7 @@ def interpolate_parameter_permaFoam_50(Se, T, soil_type, filename, method='monot
     
     return soil_type
 
-def interpolate_parameter_permaFoam_10(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
+def interpolate_parameter_imp10(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
     # assert vals.shape == (len(hc), len(T)), f"vals should have shape ({len(hc)}, {len(T)})"
     # assert jnp.all(hc == jnp.sort(hc)), "hc should be sorted in ascending order"
     # assert jnp.all(T == jnp.sort(T)), "T should be sorted in ascending order"
