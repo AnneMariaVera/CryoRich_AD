@@ -53,7 +53,7 @@ For the formulation of the residual functions of both equations see [04 Finite-V
 Both equations are solved fully coupled with implicit Euler time integration. In the code, the hydraulic unknown is the total head $h_{tot}=h_w+z$, from which $h_w$ and $h_c$ follow. To improve convergence when temperature variations are large (freezing and thawing), the temperature is transformed to
 
 $$
-y = \operatorname{arcsinh}\left(\frac{T}{b}\right), \qquad b = 0.1,
+y = \mathrm{arcsinh}\left(\frac{T}{b}\right), \qquad b = 0.1,
 $$
 
 prior to the Newton iteration and transformed back upon convergence. The vector of unknowns is thus $U=(h_{tot}, y)^T$, the residual vector is $R=(R_h,R_T)^T$ and the coupled Jacobian is

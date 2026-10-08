@@ -83,14 +83,14 @@ $$
 where $h_{c,eff}$ is the capillary head corresponding to $S_{eff}$. The flux over the top face is
 
 $$
-q^*=\begin{cases}\min(q_{inf},\,K_{s,eff}) & q_{inf}\geq0 \;\text{(infiltration)}\\ \max(q_{inf},\,-f_{evap}(S_\ell)\,K_{s,eff}) & q_{inf}<0 \;\text{(evaporation)}\end{cases}
+q^{\ast}=\begin{cases}\min(q_{inf},\,K_{s,eff}) & q_{inf}\geq0 \;\text{(infiltration)}\\ \max(q_{inf},\,-f_{evap}(S_\ell)\,K_{s,eff}) & q_{inf}<0 \;\text{(evaporation)}\end{cases}
 $$
 
 where $f_{evap}$ is a linear scaling function of the liquid water saturation $S_\ell$ of the top cell (Brunner and Simmons, 2012) that reduces evaporation in dry soil: $f_{evap}=1$ for $S_\ell>0.5$, decreasing linearly to $f_{evap}=0$ at $S_\ell=0.1$.
 In addition, no water is allowed to pond on the surface: if the total head of the top cell exceeds its elevation, the excess $q_{pond}=\max(h_{tot}[-1,:]-z[-1,:],0)/\Delta t$ is removed. The infiltration flux and the surface runoff are then
 
 $$
-q_{infil}=q^*-q_{pond}, \qquad q_{runoff}=\max(q_{inf}-q^*,0)+q_{pond}.
+q_{infil}=q^{\ast}-q_{pond}, \qquad q_{runoff}=\max(q_{inf}-q^{\ast},0)+q_{pond}.
 $$
 
 Surface runoff is diagnosed as rejected infiltration: it leaves the domain and is not simulated as overland flow, i.e. it cannot re-infiltrate further downslope.
