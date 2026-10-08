@@ -1,4 +1,4 @@
-# Explanations to the Richards Equation
+# Richards equation
 
 $$
 \frac{\partial \theta_{tot}}{\partial t}-\nabla \cdot \left(k_{rel}K_s\nabla(h_w+z)\right)=0\tag{RE}
@@ -6,7 +6,7 @@ $$
 
 with the total water content $\theta_{tot}=\theta_\ell+\theta_i$ and the pressure head $h_w$ (paper eqs. (2) and (3)).
 
-## 1. Derivation
+## 1. Mass balance
 
 The equation is derived from the mass balance equation:
 
@@ -46,9 +46,9 @@ $$
 \frac{\partial \theta_{tot}}{\partial t}+\nabla \cdot \mathbf{q}=0.\tag{1}
 $$
 
-## 2. Darcy's law
+## 2. Darcy's law and the Richards equation
 
-According to Harlan (1973), Darcy's law can be applied to describe the specific discharge of liquid water $\mathbf{q}$:
+According to Harlan [1], Darcy's law can be applied to describe the specific discharge of liquid water $\mathbf{q}$:
 
 $$
 \mathbf{q}=-k_{rel}\frac{K_0}{\mu}\nabla p_{tot}
@@ -85,8 +85,8 @@ $$
 \frac{\partial \theta_{tot}}{\partial h_w}\frac{\partial h_w}{\partial t}-\nabla \cdot \left(k_{rel}K_s\nabla(h_w+z)\right)=0.
 $$
 
-See [02.1 Overview Hydraulic Parameters](02.1%20Overview%20Hydraulic%20Parameters.md) for explanations on $k_{rel}$ and $\theta_{tot}(h_c)$.
+See [03 Hydraulic parameterizations of frozen soil](03_Hydraulic_Parameterizations.md) for explanations on $k_{rel}$ and $\theta_{tot}(h_c)$.
 
 ---
 
-R. L. Harlan, “Analysis of coupled heat-fluid transport in partially frozen soil,” _Water Resources Research_, vol. 9, pp. 1314–1323, 1973, doi: [10.1029/WR009i005p01314](https://doi.org/10.1029/WR009i005p01314).
+[1] R. L. Harlan, “Analysis of coupled heat-fluid transport in partially frozen soil,” _Water Resources Research_, vol. 9, pp. 1314–1323, 1973, doi: [10.1029/WR009i005p01314](https://doi.org/10.1029/WR009i005p01314).

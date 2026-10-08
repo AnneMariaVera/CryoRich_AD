@@ -9,7 +9,7 @@ Email: anne.hermann@uni-tuebingen.de
 Short description
 -----------------
 
-This repository contains several notebooks and utility modules used to solve the Richards equation coupled with the heat transport equation for partially frozen soils. The project is organised to keep the numerical solver and helper functions inside the `utils/` folder and the interactive work inside notebooks such as `notebooks/idealized/Idealized_cap.ipynb`.
+This repository contains several notebooks and utility modules used to solve the Richards equation coupled with the heat transport equation for partially frozen soils. The project is organized to keep the numerical solver and helper functions inside the `utils/` folder and the interactive work inside notebooks such as `notebooks/idealized/Idealized_cap.ipynb`.
 
 ![Animation of the ERA5-Land driven simulation with the capillary bundle model](docu/Figures/cap.gif)
 
@@ -22,13 +22,13 @@ Repository structure
 - `input/` - interpolations are saved here as pickle files (due to their large size, they cannot be pushed to GitHub; use `notebooks/creating_figures/compare_param.ipynb` to recreate them), along with the ERA5-Land derived forcing containing temperature and q_inf data.
 - `notebooks/` - all Jupyter notebooks are stored here:
   - `creating_figures/` - contains the notebooks used for creating the figures stored under `figures/`.
-  - `idealized/` - contains 5 notebooks (one for each parametrization) that were used to create the idealized simulations.
-  - `simulation/` - contains 5 notebooks (one for each parametrization) that were used to create the ERA5-Land simulations.
-  - `spinup/` - contains 5 notebooks (one for each parametrization) that were used to create the spinup simulations.
+  - `idealized/` - contains 5 notebooks (one for each parameterization) that were used to create the idealized simulations.
+  - `simulation/` - contains 5 notebooks (one for each parameterization) that were used to create the ERA5-Land simulations.
+  - `spinup/` - contains 5 notebooks (one for each parameterization) that were used to create the spinup simulations.
   - `supplementary/` - contains two notebooks: one for running the synthetic case simulated for the supplementary material, and one for creating the figure and calculating the mass balance.
 - `utils/` - Python package with helper modules (If you modify modules under `utils/`, make sure to restart the notebook kernel):
   - `geometry.py` - main file containing the definition of the `Geom()` class used for simulations.
-  - `parameter_interpolation.py` - interpolation of hydraulic parametrizations along temperature and capillary head.
+  - `parameter_interpolation.py` - interpolation of hydraulic parameterizations along temperature and capillary head.
   - `parse_permafoam_output.py` - contains a helper function converting permaFoam output to a pickle file.
   - `petrophysic.py` - petrophysical relations (e.g. water retention, frozen fraction).
   - `petrophysics_capillaryBundles.py` - petrophysical relations for the capillary bundle model.
@@ -50,10 +50,10 @@ conda activate cryorich_AD
 ```
 By default, JAX is installed for CPU use. For GPU support, see the JAX installation guide: https://github.com/google/jax#installation
 
-Parametrizations
-----------------
+Parameterizations
+-----------------
 
-Five parametrizations of the hydraulic properties of partially frozen soil are compared. The table maps the names used in the code to the labels used in the publication:
+Five parameterizations of the hydraulic properties of partially frozen soil are compared. The table maps the names used in the code to the labels used in the publication:
 
 | Label | Description | Name in code (`<param>`) |
 |-------|-------------|--------------------------|
@@ -68,7 +68,7 @@ The same name is used for the `parametrization` variable, the notebook names and
 Steps to reproduce
 ------------------
 
-To rerun the simulations of the publication, run the notebooks in the following order (`<param>` stands for one of the five parametrizations):
+To rerun the simulations of the publication, run the notebooks in the following order (`<param>` stands for one of the five parameterizations):
 
 0. ERA5-Land forcing *(optional, the forcings are already included under `input/era5_land_data/Sweden/` named `sim_2312_2405.pkl` and `spinup_2308_2311.pkl`)*:
    - `input/era5_land_data/download_data.ipynb` downloads ERA5-Land data ([doi:10.24381/cds.e2161bac](https://doi.org/10.24381/cds.e2161bac)). Requests are only possible per month, so the notebook is run once per month by changing `year` and `month`. Two requests are needed per month:
@@ -95,4 +95,4 @@ To rerun the simulations of the publication, run the notebooks in the following 
 Documentation
 -------------
 
-The `docu/` folder contains a mathematical theory guide (derivations and explanations). The files were created with the use of generative AI, namely Claude (Anthropic). After using this tool/service, the author(s) reviewed and edited the content as needed and take(s) full responsibility for the content of the files containing under the docu folder.
+The `docu/` folder contains a mathematical theory guide (derivations and explanations), starting at [docu/Theory_Guide/00_Overview.md](docu/Theory_Guide/00_Overview.md). The files were created with the use of generative AI, namely Claude (Anthropic). After using this tool/service, the author(s) reviewed and edited the content as needed and take(s) full responsibility for the content of the files containing under the docu folder.

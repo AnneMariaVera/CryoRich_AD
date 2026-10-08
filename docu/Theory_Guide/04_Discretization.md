@@ -1,6 +1,26 @@
-# Finite-Volume Method
+# Spatial and temporal discretization
 
-## 1. General Derivation
+## 1. Mesh
+
+<!-- DRAFT: written from Geom.create_grid and volbal.py, please check -->
+
+The domain is a hillslope with slope $s$ (paper Figure 3). It is discretized by parallelograms oriented along the surface slope (terrain-following grid cells): each row of cells follows the slope, the left ($l$) and right ($r$) faces are vertical, and the top ($t$) and bottom ($b$) faces are tilted. All cells have the area $A=\Delta x\Delta z$ and the face lengths
+
+$$
+\ell_l=\ell_r=\Delta z, \qquad \ell_t=\ell_b=\overline{\Delta x}=\sqrt{\Delta x^2+(s\Delta x)^2}
+$$
+
+($\overline{\Delta x}$ is called `dx_tilde` in the code). For $s=0$ the mesh is the usual rectangular mesh. The upward unit normal of a tilted face is $(-s,1)/\sqrt{1+s^2}$. Two vertically stacked cell centers are separated by $\Delta z$, two neighboring cell centers in a row by $(\Delta x, s\Delta x)$. The face-normal gradients of a variable $\phi$ are therefore
+
+$$
+\frac{\partial\phi}{\partial n}\Big|_{t,b}=\frac{(1+s^2)\frac{\Delta\phi_z}{\Delta z}-s\frac{\partial\phi}{\partial\xi}}{\sqrt{1+s^2}}, \qquad \frac{\partial\phi}{\partial n}\Big|_{l,r}=\frac{\Delta\phi_x}{\Delta x}-s\frac{\partial\phi}{\partial z},
+$$
+
+where $\Delta\phi_z$, $\Delta\phi_x$ are the differences between the neighboring cell centers and $\frac{\partial}{\partial \xi}=\frac{\partial}{\partial x}+s\frac{\partial}{\partial z}$ is the derivative along a row. The cross derivatives ($\frac{\partial\phi}{\partial\xi}$, $\frac{\partial\phi}{\partial z}$) are taken from the previous time step (deferred correction), so the Jacobian keeps its 5-point stencil.
+
+<!-- END DRAFT -->
+
+## 2. Finite-volume formulation
 
 Assume the governing equation is given by
 
@@ -24,29 +44,9 @@ with the outward unit normal $\mathbf{n}$. For $m$ constant inside the cell and 
 \frac{\partial m}{\partial t}A+\sum_{k\in\{l,r,t,b\}}\ell_k\thinspace f_n^k=0
 ```
 
-where $\ell_k$ is the length of face $k$ (left, right, top, bottom) and $f_n^k$ the flux normal to the face (positive out of the cell).
+where $\ell_k$ is the length of face $k$ (section 1) and $f_n^k$ the flux normal to the face (positive out of the cell).
 
-### 1.1 Mesh
-
-<!-- DRAFT: written from Geom.create_grid and volbal.py, please check -->
-
-The domain is a hillslope with slope $s$ (paper Figure 3). It is discretised by parallelograms oriented along the surface slope (terrain-following grid cells): each row of cells follows the slope, the left and right faces are vertical, and the top and bottom faces are tilted. All cells have the area $A=\Delta x\Delta z$ and the face lengths
-
-$$
-\ell_l=\ell_r=\Delta z, \qquad \ell_t=\ell_b=\overline{\Delta x}=\sqrt{\Delta x^2+(s\Delta x)^2}
-$$
-
-($\overline{\Delta x}$ is called `dx_tilde` in the code). For $s=0$ the mesh is the usual rectangular mesh. The upward unit normal of a tilted face is $(-s,1)/\sqrt{1+s^2}$. Two vertically stacked cell centres are separated by $\Delta z$, two neighbouring cell centres in a row by $(\Delta x, s\Delta x)$. The face-normal gradients of a variable $\phi$ are therefore
-
-$$
-\frac{\partial\phi}{\partial n}\Big|_{t,b}=\frac{(1+s^2)\frac{\Delta\phi_z}{\Delta z}-s\frac{\partial\phi}{\partial\xi}}{\sqrt{1+s^2}}, \qquad \frac{\partial\phi}{\partial n}\Big|_{l,r}=\frac{\Delta\phi_x}{\Delta x}-s\frac{\partial\phi}{\partial z},
-$$
-
-where $\Delta\phi_z$, $\Delta\phi_x$ are the differences between the neighbouring cell centres and $\frac{\partial}{\partial \xi}=\frac{\partial}{\partial x}+s\frac{\partial}{\partial z}$ is the derivative along a row. The cross derivatives ($\frac{\partial\phi}{\partial\xi}$, $\frac{\partial\phi}{\partial z}$) are taken from the previous time step (deferred correction), so the Jacobian keeps its 5-point stencil.
-
-<!-- END DRAFT -->
-
-### 1.2 Time discretisation
+## 3. Time discretization
 
 Time integration is performed by implicit Euler integration, i.e. all fluxes are evaluated at the new time level $t+1$. Dividing by the cell area gives the residual of cell $i$
 
@@ -54,9 +54,9 @@ $$
 R_i=\frac{m^{t+1}-m^t}{\Delta t}+\frac{1}{\Delta x}\left(f_n^{l,t+1}+f_n^{r,t+1}\right)+\frac{\overline{\Delta x}}{\Delta x\Delta z}\left(f_n^{t,t+1}+f_n^{b,t+1}\right)=0.
 $$
 
-## 2. Richards Equation
+## 4. Richards equation
 
-For the Richards equation $m=\theta_{tot}$ and $\mathbf{f}=\mathbf{q} = -k_{rel}K_s\nabla h_{tot}$ with $h_{tot}=h_w+z$. The flux over a face between cell $i$ and its neighbour $j$ is
+For the Richards equation $m=\theta_{tot}$ and $\mathbf{f}=\mathbf{q} = -k_{rel}K_s\nabla h_{tot}$ with $h_{tot}=h_w+z$. The flux over a face between cell $i$ and its neighbor $j$ is
 
 $$
 q^{ij}=-k_{rel}^{ij}K_s^{ij}\frac{\partial h_{tot}}{\partial n}\Big|_{ij}
@@ -66,15 +66,15 @@ with
 - $K_s^{ij}=\frac{2K_s^iK_s^j}{K_s^i+K_s^j}$, the harmonic mean of the saturated hydraulic conductivities, and
 - $k_{rel}^{ij}$, the relative hydraulic conductivity of the upstream cell (upwind scheme), i.e. the cell with the higher total head.
 
-$k_{rel}$ and $\theta_\ell$ are evaluated from the lookup tables (see [02.1](02.1%20Overview%20Hydraulic%20Parameters.md)) at the new time level.
+$k_{rel}$ and $\theta_\ell$ are evaluated from the lookup tables (see [05 Nonlinear solver and time stepping](05_Nonlinear_Solver.md)) at the new time level.
 
-### 2.1 Boundary Conditions
+### 4.1 Boundary conditions
 
 Notation remark: $[-1,:]$ is the indexing of arrays in Python. The arrays are indexed bottom-up, so $-1$ is the index of the top row.
 
 <!-- DRAFT: written from volbal.volbal_cappillary_bundle and horizontal_flux_update, please check -->
 
-**Top (infiltration, evaporation and runoff):** the prescribed infiltration rate $q_{inf}$ (positive downward) is limited by the ice-modified saturated hydraulic conductivity of the top cell:
+**Top (infiltration, evaporation and runoff):** the prescribed infiltration rate $q_{inf}$ (positive downward, see Forcing in [00 Overview](00_Overview.md)) is limited by the ice-modified saturated hydraulic conductivity of the top cell:
 
 $$
 K_{s,eff}=K_s\thinspace k_{rel}(h_{c,eff},T), \qquad S_{eff}=\frac{\theta_s-\theta_i-\theta_r}{\theta_s-\theta_r},
@@ -86,7 +86,7 @@ where $h_{c,eff}$ is the capillary head corresponding to $S_{eff}$. The flux ove
 q^{\ast}=\begin{cases}\min(q_{inf},\thinspace K_{s,eff}) & q_{inf}\geq0 \quad\text{(infiltration)}\\ \max(q_{inf},\thinspace -f_{evap}(S_\ell)\thinspace K_{s,eff}) & q_{inf}<0 \quad\text{(evaporation)}\end{cases}
 ```
 
-where $f_{evap}$ is a linear scaling function of the liquid water saturation $S_\ell$ of the top cell (Brunner and Simmons, 2012) that reduces evaporation in dry soil: $f_{evap}=1$ for $S_\ell>0.5$, decreasing linearly to $f_{evap}=0$ at $S_\ell=0.1$.
+where $f_{evap}$ is a linear scaling function of the liquid water saturation $S_\ell$ of the top cell [1] that reduces evaporation in dry soil: $f_{evap}=1$ for $S_\ell>0.5$, decreasing linearly to $f_{evap}=0$ at $S_\ell=0.1$.
 In addition, no water is allowed to pond on the surface: if the total head of the top cell exceeds its elevation, the excess $q_{pond}=\max(h_{tot}[-1,:]-z[-1,:],0)/\Delta t$ is removed. The infiltration flux and the surface runoff are then
 
 $$
@@ -101,21 +101,13 @@ $$
 q^r=-K_s\frac{\partial h_{tot}}{\partial n}\Big|_r
 $$
 
-where the head at the face is prescribed as $h_{tot}=z$ (atmospheric pressure, $h_w=0$) at a distance $\Delta x/2$ from the cell centre. In the publication, the outflow through the top half of the seepage face is evaluated as interflow and the outflow through the bottom half as groundwater discharge.
+where the head at the face is prescribed as $h_{tot}=z$ (atmospheric pressure, $h_w=0$) at a distance $\Delta x/2$ from the cell center. In the publication, the outflow through the top half of the seepage face is evaluated as interflow and the outflow through the bottom half as groundwater discharge.
 
 **Left, Bottom:** zero-flux boundaries.
 
 <!-- END DRAFT -->
 
-**Forcing (ERA5-Land):** the infiltration rate is computed from the ERA5-Land data as (paper eq. (23))
-
-$$
-q_{inf}=P-E-S_{fall}+S_{melt}
-$$
-
-with the total precipitation $P$, the evaporation from bare soil $E$, the snowfall $S_{fall}$ and the snowmelt $S_{melt}$. The soil temperature of the first ERA5-Land soil layer (0 cm to 7 cm) is used as surface temperature. In the notebooks, both hourly time series are smoothed with a 24-hour moving average.
-
-## 3. Heat Transport
+## 5. Heat transport equation
 
 For the heat transport equation
 
@@ -147,11 +139,11 @@ The specific discharges $\mathbf{q}$ are taken from the Richards equation at the
 - the thermal conductivity is harmonically averaged, $\lambda^{ij}=\frac{2\lambda^i\lambda^j}{\lambda^i+\lambda^j}$, and
 - the interface temperature of the convective flux is taken from the upstream cell (upwind method).
 
-### 3.1 Boundary Conditions
+### 5.1 Boundary conditions
 
 <!-- DRAFT: written from volbal.vertical_condflux_update / vertical_convflux_update, please check -->
 
-**Top:** the surface temperature $T_{surface}$ is applied at the surface, half a cell ($\Delta z/2$) above the centre of the top cell. The conductive flux is
+**Top:** the surface temperature $T_{surface}$ (see Forcing in [00 Overview](00_Overview.md)) is applied at the surface, half a cell ($\Delta z/2$) above the center of the top cell. The conductive flux is
 
 $$
 f_{cond}^{t}=-\lambda_{eq}[-1,:]\frac{T_{surface}-T[-1,:]}{\Delta z/2}\sqrt{1+s^2},
@@ -167,4 +159,4 @@ where the factor $\sqrt{1+s^2}$ accounts for the tilted surface. Infiltrating wa
 
 ---
 
-P. Brunner and C. T. Simmons, “HydroGeoSphere: A fully integrated, physically based hydrological model,” _Groundwater_, vol. 50, pp. 170–176, 2012, doi: [10.1111/j.1745-6584.2011.00882.x](https://doi.org/10.1111/j.1745-6584.2011.00882.x).
+[1] P. Brunner and C. T. Simmons, “HydroGeoSphere: A fully integrated, physically based hydrological model,” _Groundwater_, vol. 50, pp. 170–176, 2012, doi: [10.1111/j.1745-6584.2011.00882.x](https://doi.org/10.1111/j.1745-6584.2011.00882.x).

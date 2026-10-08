@@ -1,4 +1,4 @@
-# Explanations to the Heat Transport equation
+# Heat transport equation
 
 $$\frac{\partial}{\partial t} \left(  C_{eq}T - \rho_i H_f \theta_i\right)+ \nabla \cdot \left(\mathbf{q}\thinspace  C_\ell T \right)- \nabla \cdot \left( \lambda_{eq} \nabla T \right) = 0 \tag{HT}
 $$
@@ -9,36 +9,9 @@ with $T$ in °C and
 - $H_f\thinspace [m^2s^{-2}]=[J\thinspace kg^{-1}]$, the latent heat of fusion,
 - $C_\ell=\rho_\ell c_\ell\thinspace [kg\thinspace m^{-1}s^{-2}°C^{-1}]$, the volumetric heat capacity of liquid water,
 - $\mathbf{q}\thinspace [m\thinspace s^{-1}]$, the specific discharge of liquid water from the Richards equation,
-- $C_{eq}$, the equivalent volumetric heat capacity, given by the volume-weighted arithmetic mean over the ice, liquid, gas and matrix fractions (paper eq. (5))
-
-$$
-C_{eq}=\sum_\gamma\rho_\gamma c_\gamma\theta_\gamma=\rho_i c_i\theta_i+\rho_\ell c_\ell\theta_\ell+\rho_g c_g\theta_g+\rho_m c_m(1-n_e)\quad[kg\thinspace m^{-1}s^{-2}°C^{-1}],
-$$
-
-- $\lambda_{eq}$, the equivalent thermal conductivity, given by the corresponding volume-weighted geometric mean (paper eq. (6))
-
-$$
-\lambda_{eq}=\prod_\gamma\lambda_\gamma^{\theta_\gamma}=\lambda_i^{\theta_i}\lambda_\ell^{\theta_\ell}\lambda_g^{\theta_g}\lambda_m^{1-n_e}\quad[kg\thinspace m\thinspace s^{-3}°C^{-1}],
-$$
-
-with the mass density $\rho_\gamma\thinspace [kg\thinspace m^{-3}]$, the specific heat capacity $c_\gamma\thinspace [m^2s^{-2}°C^{-1}]$ and the thermal conductivity $\lambda_\gamma\thinspace [kg\thinspace m\thinspace s^{-3}°C^{-1}]$ of phase $\gamma$. The gas content is $\theta_g=n_e-\theta_\ell-\theta_i$, and in the code the effective porosity $n_e$ is the saturated water content $\theta_s$.
+- $C_{eq}$ and $\lambda_{eq}$, the equivalent volumetric heat capacity and thermal conductivity (see section 2).
 
 **Unit check:** each term has the unit $\frac{kg}{ms^3} = \frac{J}{sm^3}$.
-
-<!-- DRAFT: values taken from the simulation notebooks (notebooks/spinup, simulation, idealized, supplementary), please check -->
-
-**Values used in the simulations** (set in the notebooks and passed to `Geom.set_thermal_params`; the defaults in the code differ):
-
-| Phase | $\rho_\gamma\thinspace [kg\thinspace m^{-3}]$ | $\rho_\gamma c_\gamma\thinspace [J\thinspace m^{-3}K^{-1}]$ | $\lambda_\gamma\thinspace [W\thinspace m^{-1}K^{-1}]$ |
-|-------|------|------|-------|
-| gas ($g$) | 1.1 | 1228.08 | 0.0262 |
-| ice ($i$) | 917 | $1.8952\cdot10^{6}$ | 2.14 |
-| liquid water ($\ell$) | 998 | $4.182\cdot10^{6}$ | 0.6 |
-| matrix ($m$) | 2650 | $1.92372\cdot10^{6}$ | 2.9 |
-
-and $\rho_iH_f = 3.34\cdot10^{8}\thinspace J\thinspace m^{-3}$, i.e. $H_f\approx3.64\cdot10^{5}\thinspace J\thinspace kg^{-1}$.
-
-<!-- END DRAFT -->
 
 ## 1. Derivation
 
@@ -74,7 +47,38 @@ $$
 \frac{\partial}{\partial t} \left(  C_{eq}T - \rho_i H_f \theta_i\right)+ \nabla \cdot \left(\mathbf{q}\thinspace C_\ell T \right)- \nabla \cdot \left( \lambda_{eq} \nabla T \right) = 0. \tag{HT}
 $$
 
-## 2. Apparent heat capacity
+## 2. Equivalent thermal properties
+
+The equivalent volumetric heat capacity $C_{eq}$ is given by the volume-weighted arithmetic mean over the ice, liquid, gas and matrix fractions (paper eq. (5))
+
+$$
+C_{eq}=\sum_\gamma\rho_\gamma c_\gamma\theta_\gamma=\rho_i c_i\theta_i+\rho_\ell c_\ell\theta_\ell+\rho_g c_g\theta_g+\rho_m c_m(1-n_e)\quad[kg\thinspace m^{-1}s^{-2}°C^{-1}],
+$$
+
+and the equivalent thermal conductivity $\lambda_{eq}$ by the corresponding volume-weighted geometric mean (paper eq. (6))
+
+$$
+\lambda_{eq}=\prod_\gamma\lambda_\gamma^{\theta_\gamma}=\lambda_i^{\theta_i}\lambda_\ell^{\theta_\ell}\lambda_g^{\theta_g}\lambda_m^{1-n_e}\quad[kg\thinspace m\thinspace s^{-3}°C^{-1}],
+$$
+
+with the mass density $\rho_\gamma\thinspace [kg\thinspace m^{-3}]$, the specific heat capacity $c_\gamma\thinspace [m^2s^{-2}°C^{-1}]$ and the thermal conductivity $\lambda_\gamma\thinspace [kg\thinspace m\thinspace s^{-3}°C^{-1}]$ of phase $\gamma$. The gas content is $\theta_g=n_e-\theta_\ell-\theta_i$, and in the code the effective porosity $n_e$ is the saturated water content $\theta_s$.
+
+<!-- DRAFT: values taken from the simulation notebooks (notebooks/spinup, simulation, idealized, supplementary), please check -->
+
+**Values used in the simulations** (set in the notebooks and passed to `Geom.set_thermal_params`; the defaults in the code differ):
+
+| Phase | $\rho_\gamma\thinspace [kg\thinspace m^{-3}]$ | $\rho_\gamma c_\gamma\thinspace [J\thinspace m^{-3}K^{-1}]$ | $\lambda_\gamma\thinspace [W\thinspace m^{-1}K^{-1}]$ |
+|-------|------|------|-------|
+| gas ($g$) | 1.1 | 1228.08 | 0.0262 |
+| ice ($i$) | 917 | $1.8952\cdot10^{6}$ | 2.14 |
+| liquid water ($\ell$) | 998 | $4.182\cdot10^{6}$ | 0.6 |
+| matrix ($m$) | 2650 | $1.92372\cdot10^{6}$ | 2.9 |
+
+and $\rho_iH_f = 3.34\cdot10^{8}\thinspace J\thinspace m^{-3}$, i.e. $H_f\approx3.64\cdot10^{5}\thinspace J\thinspace kg^{-1}$.
+
+<!-- END DRAFT -->
+
+## 3. Apparent heat capacity
 
 Under the assumption of thermal equilibrium (phase change is instantaneous), the ice content is a function of temperature, $\theta_i=\theta_i(T)$. Neglecting the change of $C_{eq}$ with time and changes of $\theta_i$ due to changes in $h_c$, the storage term can be written as
 
@@ -84,4 +88,4 @@ $$
 
 Since $\frac{\partial \theta_i}{\partial T}<0$, the apparent heat capacity $C_{app}=C_{eq} - \rho_i H_f \frac{\partial \theta_i}{\partial T}$ is larger than $C_{eq}$ within the freezing range.
 
-**Note:** the code does not use the apparent heat capacity. It discretises the energy $E$ directly (see [04 Finite-Volume Method](04%20Finite-Volume%20Method.md)), which conserves energy (up to the solver tolerance) and needs none of the assumptions above.
+**Note:** the code does not use the apparent heat capacity. It discretizes the energy $E$ directly (see [04 Spatial and temporal discretization](04_Discretization.md)), which conserves energy (up to the solver tolerance) and needs none of the assumptions above.
