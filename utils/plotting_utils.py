@@ -772,7 +772,7 @@ def create_animation_streamlines(
     X, Z,
     cell1_t, qx_t, qz_t,
     cell2_t, cell3_t,
-    recharge, q_inf, skt_array,
+    runoff, q_inf, skt_array,
     time_array,
     dates=None,
     slope=0,
@@ -842,7 +842,8 @@ def create_animation_streamlines(
     fig = plt.figure(figsize=(25*cm, 23*cm))
     gs = fig.add_gridspec(4, 3, width_ratios=[1, 0.03, 0.01],wspace=0.3, hspace=0.25)
 
-    ax_bc = fig.add_subplot(gs[0, 0])
+    ax_bc = fig.add_subplot(gs[0, 0])   
+    ax_bc.set_title("Surface boundary conditions", loc="left", fontweight="bold")
     ax_cp = ax_bc.twinx()
 
     ax = [fig.add_subplot(gs[i, 0]) for i in range(1, 4)]
@@ -853,7 +854,7 @@ def create_animation_streamlines(
 
     # Top plot (UPDATED)
     dt = np.diff(x_full).mean() if use_dates else np.diff(x_time).mean()
-    ax_bc.bar(x_time, recharge,width=dt, color=carolina_blue,label="runoff")
+    ax_bc.bar(x_time, runoff,width=dt, color=carolina_blue,label="runoff")
     ax_bc.bar(x_time, q_inf, width=dt, color=cobalt,label="infiltration")
     ax_bc.legend(loc="upper left")
     ax_bc.set_ylabel("flux [m/s]", color=cobalt)
@@ -904,6 +905,8 @@ def create_animation_streamlines(
                              vmin=vmin1, vmax=vmax1, shading="gouraud")
     fig.colorbar(pcm0, cax=cax00, label=clabels[0])
 
+    for i in range(1, len(cell1_t)):
+        qz_t[i] = np.sqrt(1 + slope**2) * qz_t[i] + slope * qx_t[i]
     qx_i, qz_i, speed = interpolate_flow(qx_t[-1], qz_t[-1])
     lw = compute_linewidth(speed)
 
