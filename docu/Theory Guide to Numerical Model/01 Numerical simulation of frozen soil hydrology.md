@@ -18,12 +18,12 @@ The total water content is $\theta_{tot}=\theta_i+\theta_\ell$.
 
 **Sign convention:** throughout this guide the capillary head is defined by (paper eq. (7))
 
-$$
+```math
 h_c = \begin{cases}
         -h_w, &\text{if }h_w<0\\
         0, &\text{otherwise,}
     \end{cases}
-$$
+```
 
 and the total hydraulic head is $h_{tot}=h_w+z$.
 
@@ -31,14 +31,14 @@ and the total hydraulic head is $h_{tot}=h_w+z$.
 
 **Richards equation** for water flow in the unsaturated zone (paper eqs. (2) and (3)):
 
-$$\frac{\partial \theta_{tot}}{\partial t}-\nabla \cdot \left(k_{rel}\,K_s\,\nabla(h_w+z)\right)=0\tag{RE}$$
+$$\frac{\partial \theta_{tot}}{\partial t}-\nabla \cdot \left(k_{rel}\thinspace K_s\thinspace \nabla(h_w+z)\right)=0\tag{RE}$$
 
 - [02 Explanations to the Richards Equation](02%20Explanations%20to%20the%20Richards%20Equation.md)
 - [02.1 Overview Hydraulic Parameters](02.1%20Overview%20Hydraulic%20Parameters.md)
 
 **Heat transport equation** for the temperature distribution [1] (paper eq. (4)):
 
-$$\frac{\partial}{\partial t} \left( C_{eq}T - \rho_i H_f \theta_i \right)+ \nabla \cdot \left(\mathbf{q}\, C_\ell T \right)- \nabla \cdot \left( \lambda_{eq} \nabla T \right) = 0 \tag{HT}$$
+$$\frac{\partial}{\partial t} \left( C_{eq}T - \rho_i H_f \theta_i \right)+ \nabla \cdot \left(\mathbf{q}\thinspace  C_\ell T \right)- \nabla \cdot \left( \lambda_{eq} \nabla T \right) = 0 \tag{HT}$$
 
 - [03 Explanations to the Heat Transport equation](03%20Explanations%20to%20the%20Heat%20Transport%20equation.md)
 
@@ -58,9 +58,9 @@ $$
 
 prior to the Newton iteration and transformed back upon convergence. The vector of unknowns is thus $U=(h_{tot}, y)^T$, the residual vector is $R=(R_h,R_T)^T$ and the coupled Jacobian is
 
-$$
+```math
 J = \begin{pmatrix}\frac{\partial R_h}{\partial h_{tot}} & \frac{\partial R_h}{\partial y}\\ \frac{\partial R_T}{\partial h_{tot}} & \frac{\partial R_T}{\partial y}\end{pmatrix}.
-$$
+```
 
 The Jacobian is computed by automatic differentiation (JAX) using its known sparsity pattern (`sparsejac`). In each Newton-Raphson iteration the sparse linear system
 

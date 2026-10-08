@@ -15,7 +15,7 @@ The equation is derived from the mass balance equation:
 In a partially frozen soil, water is stored as liquid and as ice, but only the liquid phase moves:
 
 $$
-\frac{\partial}{\partial t}\int_V\left(\rho_\ell\theta_\ell+\rho_i\theta_i\right)dV+\int_{\partial V}\rho_\ell\mathbf{q}\cdot\mathbf{n}\,d\partial V = \int_V\rho_\ell S_0\,dV.
+\frac{\partial}{\partial t}\int_V\left(\rho_\ell\theta_\ell+\rho_i\theta_i\right)dV+\int_{\partial V}\rho_\ell\mathbf{q}\cdot\mathbf{n}\thinspace d\partial V = \int_V\rho_\ell S_0\thinspace dV.
 $$
 
 With the divergence theorem and infinitesimally small control volumes we get
@@ -54,7 +54,7 @@ $$
 \mathbf{q}=-k_{rel}\frac{K_0}{\mu}\nabla p_{tot}
 $$
 
-with the intrinsic permeability $K_0\,[m^2]$, the dynamic viscosity of water $\mu\,[Pa\,s]$ and
+with the intrinsic permeability $K_0\thinspace [m^2]$, the dynamic viscosity of water $\mu\thinspace [Pa\thinspace s]$ and
 
 $$
 p_{tot}=\rho_\ell gz+p_w+p_a

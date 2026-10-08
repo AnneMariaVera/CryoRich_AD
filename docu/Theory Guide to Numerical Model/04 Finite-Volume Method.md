@@ -11,18 +11,18 @@ $$
 with a stored quantity $m$ and its flux $\mathbf{f}$. We now look at a single cell $i$ with area $A$:
 
 $$
-\int_A\frac{\partial m}{\partial t}\,dA+\int_A\nabla \cdot \mathbf{f}\,dA=0
+\int_A\frac{\partial m}{\partial t}\thinspace dA+\int_A\nabla \cdot \mathbf{f}\thinspace dA=0
 $$
 
 $$
-\Leftrightarrow\frac{\partial}{\partial t}\int_Am\,dA+\int_{\partial A}\mathbf{n} \cdot \mathbf{f}\,d\partial A=0
+\Leftrightarrow\frac{\partial}{\partial t}\int_Am\thinspace dA+\int_{\partial A}\mathbf{n} \cdot \mathbf{f}\thinspace d\partial A=0
 $$
 
 with the outward unit normal $\mathbf{n}$. For $m$ constant inside the cell and $\mathbf{f}$ constant over each face of the boundary we get
 
-$$
-\frac{\partial m}{\partial t}A+\sum_{k\in\{l,r,t,b\}}\ell_k\,f_n^k=0
-$$
+```math
+\frac{\partial m}{\partial t}A+\sum_{k\in\{l,r,t,b\}}\ell_k\thinspace f_n^k=0
+```
 
 where $\ell_k$ is the length of face $k$ (left, right, top, bottom) and $f_n^k$ the flux normal to the face (positive out of the cell).
 
@@ -77,14 +77,14 @@ Notation remark: $[-1,:]$ is the indexing of arrays in Python. The arrays are in
 **Top (infiltration, evaporation and runoff):** the prescribed infiltration rate $q_{inf}$ (positive downward) is limited by the ice-modified saturated hydraulic conductivity of the top cell:
 
 $$
-K_{s,eff}=K_s\,k_{rel}(h_{c,eff},T), \qquad S_{eff}=\frac{\theta_s-\theta_i-\theta_r}{\theta_s-\theta_r},
+K_{s,eff}=K_s\thinspace k_{rel}(h_{c,eff},T), \qquad S_{eff}=\frac{\theta_s-\theta_i-\theta_r}{\theta_s-\theta_r},
 $$
 
 where $h_{c,eff}$ is the capillary head corresponding to $S_{eff}$. The flux over the top face is
 
-$$
-q^{\ast}=\begin{cases}\min(q_{inf},\,K_{s,eff}) & q_{inf}\geq0 \;\text{(infiltration)}\\ \max(q_{inf},\,-f_{evap}(S_\ell)\,K_{s,eff}) & q_{inf}<0 \;\text{(evaporation)}\end{cases}
-$$
+```math
+q^{\ast}=\begin{cases}\min(q_{inf},\thinspace K_{s,eff}) & q_{inf}\geq0 \quad\text{(infiltration)}\\ \max(q_{inf},\thinspace -f_{evap}(S_\ell)\thinspace K_{s,eff}) & q_{inf}<0 \quad\text{(evaporation)}\end{cases}
+```
 
 where $f_{evap}$ is a linear scaling function of the liquid water saturation $S_\ell$ of the top cell (Brunner and Simmons, 2012) that reduces evaporation in dry soil: $f_{evap}=1$ for $S_\ell>0.5$, decreasing linearly to $f_{evap}=0$ at $S_\ell=0.1$.
 In addition, no water is allowed to pond on the surface: if the total head of the top cell exceeds its elevation, the excess $q_{pond}=\max(h_{tot}[-1,:]-z[-1,:],0)/\Delta t$ is removed. The infiltration flux and the surface runoff are then
@@ -120,7 +120,7 @@ with the total precipitation $P$, the evaporation from bare soil $E$, the snowfa
 For the heat transport equation
 
 $$
-m = C_{eq}T-\rho_i H_f \theta_i, \qquad \mathbf{f}_{conv} = \mathbf{q}\, C_\ell T, \qquad \mathbf{f}_{cond} = -\lambda_{eq} \nabla T.
+m = C_{eq}T-\rho_i H_f \theta_i, \qquad \mathbf{f}_{conv} = \mathbf{q}\thinspace  C_\ell T, \qquad \mathbf{f}_{cond} = -\lambda_{eq} \nabla T.
 $$
 
 To make the notation easier to read we separate the residual into different parts:
