@@ -11,9 +11,9 @@ Short description
 
 This repository contains several notebooks and utility modules used to solve the Richards equation coupled with the heat transport equation for partially frozen soils. The project is organised to keep the numerical solver and helper functions inside the `utils/` folder and the interactive work inside notebooks such as `notebooks/idealized/Idealized_cap.ipynb`.
 
-![Animation of the idealized simulation with the capillary bundle model](docu/Figures/cap.gif)
+![Animation of the ERA5-Land driven simulation with the capillary bundle model](docu/Figures/cap.gif)
 
-*Idealized simulation with the capillary bundle model (created with `notebooks/creating_figures/create_animation.ipynb`).*
+*ERA5-Land driven simulation (November 2023 to June 2024) with the capillary bundle model (created with `notebooks/creating_figures/create_animation.ipynb`).*
 
 Repository structure
 --------------------
