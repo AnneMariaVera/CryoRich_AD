@@ -2,21 +2,21 @@
 
 ## 1. Mesh
 
-<!-- DRAFT: written from Geom.create_grid and volbal.py, please check -->
+![](../Figures/domain.png)
 
-The domain is a hillslope with slope $s$ (paper Figure 3). It is discretized by parallelograms oriented along the surface slope (terrain-following grid cells): each row of cells follows the slope, the left ($l$) and right ($r$) faces are vertical, and the top ($t$) and bottom ($b$) faces are tilted. All cells have the area $A=\Delta x\Delta z$ and the face lengths
+The domain is a hillslope with slope $s$. It is discretized by parallelograms oriented along the surface slope (terrain-following grid cells): each row of cells follows the slope, the left ($l$) and right ($r$) faces are vertical, and the top ($t$) and bottom ($b$) faces are tilted. All cells have the area $A=\Delta x\Delta z$ and the face lengths
 
 $$
 \ell_l=\ell_r=\Delta z, \qquad \ell_t=\ell_b=\overline{\Delta x}=\sqrt{\Delta x^2+(s\Delta x)^2}
 $$
 
-($\overline{\Delta x}$ is called `dx_tilde` in the code). For $s=0$ the mesh is the usual rectangular mesh. The upward unit normal of a tilted face is $(-s,1)/\sqrt{1+s^2}$. Two vertically stacked cell centers are separated by $\Delta z$, two neighboring cell centers in a row by $(\Delta x, s\Delta x)$. The face-normal gradients of a variable $\phi$ are therefore
+($\overline{\Delta x}$ is called `dx_tilde` in the code). The upward unit normal of a tilted face is $(-s,1)/\sqrt{1+s^2}$. Two vertically stacked cell centers are separated by $\Delta z$, two neighboring cell centers in a row by $(\Delta x, s\Delta x)$. The face-normal gradients of a variable $\phi$ are therefore
 
 $$
 \frac{\partial\phi}{\partial n}\Big|_{t,b}=\frac{(1+s^2)\frac{\Delta\phi_z}{\Delta z}-s\frac{\partial\phi}{\partial\xi}}{\sqrt{1+s^2}}, \qquad \frac{\partial\phi}{\partial n}\Big|_{l,r}=\frac{\Delta\phi_x}{\Delta x}-s\frac{\partial\phi}{\partial z},
 $$
 
-where $\Delta\phi_z$, $\Delta\phi_x$ are the differences between the neighboring cell centers and $\frac{\partial}{\partial \xi}=\frac{\partial}{\partial x}+s\frac{\partial}{\partial z}$ is the derivative along a row. The cross derivatives ($\frac{\partial\phi}{\partial\xi}$, $\frac{\partial\phi}{\partial z}$) are taken from the previous time step (deferred correction), so the Jacobian keeps its 5-point stencil.
+where $\Delta\phi_z$, $\Delta\phi_x$ are the differences between the neighboring cell centers and $\frac{\partial}{\partial \xi}=\frac{\partial}{\partial x}+s\frac{\partial}{\partial z}$ is the derivative along a row. Because the line connecting two neighboring cell centers is not perpendicular to their shared face, the difference $\Delta\phi$ alone does not give the normal gradient. The correction terms contain the tangential derivatives ($\frac{\partial\phi}{\partial\xi}$ along the tilted faces, $\frac{\partial\phi}{\partial z}$ along the vertical faces), which are evaluated explicitly from the previous time step (deferred correction).
 
 <!-- END DRAFT -->
 
@@ -38,7 +38,7 @@ $$
 \Leftrightarrow\frac{\partial}{\partial t}\int_Am\thinspace dA+\int_{\partial A}\mathbf{n} \cdot \mathbf{f}\thinspace d\partial A=0
 $$
 
-with the outward unit normal $\mathbf{n}$. For $m$ constant inside the cell and $\mathbf{f}$ constant over each face of the boundary we get
+with the outward unit normal $\mathbf{n}$. For $m$ constant inside the cell and $\mathbf{f}$ constant over each face of cell $i$ we get
 
 ```math
 \frac{\partial m}{\partial t}A+\sum_{k\in\{l,r,t,b\}}\ell_k\thinspace f_n^k=0
@@ -66,13 +66,11 @@ with
 - $K_s^{ij}=\frac{2K_s^iK_s^j}{K_s^i+K_s^j}$, the harmonic mean of the saturated hydraulic conductivities, and
 - $k_{rel}^{ij}$, the relative hydraulic conductivity of the upstream cell (upwind scheme), i.e. the cell with the higher total head.
 
-$k_{rel}$ and $\theta_\ell$ are evaluated from the lookup tables (see [05 Nonlinear solver and time stepping](05_Nonlinear_Solver.md)) at the new time level.
+$k_{rel}$ and $\theta_\ell$ are evaluated from lookup tables (see [05 Nonlinear solver and time stepping](05_Nonlinear_Solver.md)) at the new time level.
 
 ### 4.1 Boundary conditions
 
-Notation remark: $[-1,:]$ is the indexing of arrays in Python. The arrays are indexed bottom-up, so $-1$ is the index of the top row.
-
-<!-- DRAFT: written from volbal.volbal_cappillary_bundle and horizontal_flux_update, please check -->
+Notation remark: $[-1,:]$ is the indexing of arrays in Python (index 0 refers to coloumns and index 1 to rows). The arrays are indexed bottom-up, so $-1$ is the index of the top row. 
 
 **Top (infiltration, evaporation and runoff):** the prescribed infiltration rate $q_{inf}$ (positive downward, see Forcing in [00 Overview](00_Overview.md)) is limited by the ice-modified saturated hydraulic conductivity of the top cell:
 
@@ -103,9 +101,10 @@ $$
 
 where the head at the face is prescribed as $h_{tot}=z$ (atmospheric pressure, $h_w=0$) at a distance $\Delta x/2$ from the cell center. In the publication, the outflow through the top half of the seepage face is evaluated as interflow and the outflow through the bottom half as groundwater discharge.
 
+Note that for the synthetic case simulated for the supplementary material, the right boundary condition is a river with the river head located at $z=0$ m.
+
 **Left, Bottom:** zero-flux boundaries.
 
-<!-- END DRAFT -->
 
 ## 5. Heat transport equation
 

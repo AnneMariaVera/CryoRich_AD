@@ -26,9 +26,9 @@ $$
 
 ## 2. Partially frozen soil
 
-When the pore water starts freezing, the total water content $\theta_{tot}(h_c)$ from the soil-retention curve is split into a liquid part $\theta_\ell$ and an ice part $\theta_i$, and the relative hydraulic conductivity becomes a function of capillary head and temperature, $k_{rel}(h_c,T)$. The density difference between ice and liquid water is neglected.
+When the pore water starts freezing, the total water content $\theta_{tot}(h_c)$ from the soil-retention curve is split into a liquid part $\theta_\ell$ and an ice part $\theta_i$, and the relative hydraulic conductivity becomes a function of capillary head and temperature, $k_{rel}(h_c,T)$. 
 
-Five configurations of three parameterizations are compared (see the table in the README for the names used in the code):
+Five configurations of three parameterizations are compared with this code (see the table in the README for the names used in the code):
 
 | Label | Parameterization | Phase partitioning | $k_{rel}$ |
 |-------|-----------------|--------------------|-----------|
@@ -54,7 +54,7 @@ $$
 \theta_i=\theta_{tot}-\theta_\ell.
 $$
 
-The relative hydraulic conductivity is then calculated with $k_{rel}(S)$, section 1.2, where $S$ is replaced by the effective saturation of the liquid water (paper eq. (13))
+The relative hydraulic conductivity is then calculated with $k_{rel}(S)$, where $S$ is replaced by the effective saturation of the liquid water (paper eq. (13))
 
 $$
 S_\ell=\frac{\theta_\ell-\theta_r}{\theta_s-\theta_r}.
@@ -86,17 +86,17 @@ $$
 p_w = H_f\rho_\ell \ln\left(\frac{T}{T_m}\right)\Leftrightarrow h_w=\frac{H_f}{g}\ln\left(\frac{T}{T_m}\right).
 $$
 
-This relation is not used in the parameterizations (A)-(D). The capillary bundle model (E) uses the related Gibbs-Thomson equation (see 2.4).
+This relation is not used in the parameterizations (A)-(D), as we decided on one parametrization, namely the one implemented in permaFoam [4]. The capillary bundle model (E) uses the Gibbs-Thomson equation (see 2.4).
 
 ### 2.4 Capillary bundle model
 
-The third parameterization [1] resolves the geometry of the ice within individual pores. It extends the capillary bundle model underlying the van Genuchten-Mualem parameterization, where the soil is considered as a collection of capillaries with varying radii. Under unfrozen conditions (paper eqs. (15) and (16))
+The third parameterization was developed by **Watanabe and Flury** [1] and resolves the geometry of the ice within individual pores. It extends the capillary bundle model underlying the van Genuchten-Mualem parameterization, where the soil is considered as a collection of capillaries with varying radii. Under unfrozen conditions (paper eqs. (15) and (16))
 
 $$
 k_{rel}(S)=S^{\frac{1}{2}}\left(\frac{\int_0^S\left(\frac{1}{h_c(S_{\ast})}\right)dS_{\ast}}{\int_0^1\left(\frac{1}{h_c(S_{\ast})}\right)dS_{\ast}}\right)^2, \qquad h_c(S_{\ast})=\frac{1}{\alpha}\left(S_{\ast}^{n/(1-n)}-1\right)^{\frac{1}{n}},
 $$
 
-whose analytical solution is the van Genuchten-Mualem equation of section 1.2. Each effective saturation corresponds to the largest water-filled pore radius (Young-Laplace equation, paper eq. (A.4))
+whose analytical solution is the van Genuchten-Mualem (paper eq. (9)). Each effective saturation corresponds to the largest water-filled pore radius (Young-Laplace equation, paper eq. (A.4))
 
 $$
 R(S_{\ast})=\frac{2\sigma_{aw}}{\rho_\ell g\thinspace h_c(S_{\ast})}
@@ -122,7 +122,7 @@ $$
 r_{GT}(T)=\frac{\sigma_{ls}}{\rho_iH_f}\left(\frac{T_m}{T_m-T}\right),
 $$
 
-with the Hamaker constant $A=-10^{-19.5}\thinspace J$, the surface tension between liquid water and ice $\sigma_{ls}=0.029\thinspace N\thinspace m^{-1}$, the melting temperature $T_m=273.15\thinspace K$ and $T$ in Kelvin. Pores of a radius $R\leq r_{GT}(T)+d(T)$ remain ice free, whereas liquid water in pores with a larger radius is restricted to a cylindrical film of thickness $d(T)$.
+with the Hamaker constant $A=-10^{-19.5}\thinspace J$, the surface tension between liquid water and ice $\sigma_{ls}=0.029\thinspace N\thinspace m^{-1}$, the melting temperature $T_m$. Pores of a radius $R\leq r_{GT}(T)+d(T)$ remain ice free, whereas liquid water in pores with a larger radius is restricted to a cylindrical film of thickness $d(T)$.
 
 The saturation of the pore space with liquid water is (paper eq. (20))
 

@@ -1,12 +1,10 @@
 # Nonlinear solver and time stepping
 
-For the formulation of the residual functions of both equations see [04 Spatial and temporal discretization](04_Discretization.md).
+For the formulation of the residual functions of both the Richards and heat transport equation see [04 Spatial and temporal discretization](04_Discretization.md).
 
 ## 1. Coupled Newton-Raphson scheme
 
-<!-- DRAFT: section below written from geometry.py (simulate_cap_bundle, newtonRaphson_cap_bundle), please check -->
-
-Both equations are solved fully coupled with implicit Euler time integration. In the code, the hydraulic unknown is the total head $h_{tot}=h_w+z$, from which $h_w$ and $h_c$ follow. To improve convergence when temperature variations are large (freezing and thawing), the temperature is transformed to
+Both equations are solved fully coupled with implicit Euler time integration. In the code, the hydraulic unknown is the total head $h_{tot}=h_w+z$, from which $h_w$ and $h_c$ follow. To improve convergence when gradients along temperature are large (freezing and thawing), the temperature is transformed to
 
 $$
 y = \mathrm{arcsinh}\left(\frac{T}{b}\right), \qquad b = 0.1,

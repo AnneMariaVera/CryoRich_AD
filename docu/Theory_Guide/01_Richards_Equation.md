@@ -12,7 +12,7 @@ The equation is derived from the mass balance equation:
 
 > change of stored mass + net mass flux = total source/sink of mass
 
-In a partially frozen soil, water is stored as liquid and as ice, but only the liquid phase moves:
+In a partially frozen soil, water is stored as liquid and as ice
 
 $$
 \frac{\partial}{\partial t}\int_V\left(\rho_\ell\theta_\ell+\rho_i\theta_i\right)dV+\int_{\partial V}\rho_\ell\mathbf{q}\cdot\mathbf{n}\thinspace d\partial V = \int_V\rho_\ell S_0\thinspace dV.
@@ -40,7 +40,7 @@ $$
 \frac{\partial \theta_{tot}}{\partial t}+\nabla \cdot \mathbf{q}=S_0.
 $$
 
-We now also neglect the source/sink term and end up at
+We also do not consider internal source/sink and end up at
 
 $$
 \frac{\partial \theta_{tot}}{\partial t}+\nabla \cdot \mathbf{q}=0.\tag{1}
@@ -48,7 +48,7 @@ $$
 
 ## 2. Darcy's law and the Richards equation
 
-According to Harlan [1], Darcy's law can be applied to describe the specific discharge of liquid water $\mathbf{q}$:
+According to Harlan [1], Darcy's law can be applied to simulate the hydrology of partially frozen soils. It describe the specific discharge of liquid water $\mathbf{q}$:
 
 $$
 \mathbf{q}=-k_{rel}\frac{K_0}{\mu}\nabla p_{tot}
@@ -79,13 +79,8 @@ $$
 \frac{\partial \theta_{tot}}{\partial t}-\nabla \cdot \left(k_{rel}K_s\nabla(h_w+z)\right)=0.\tag{RE}
 $$
 
-In the frozen soil, $k_{rel}=k_{rel}(h_c,T)$ depends on both capillary head and temperature. The total water content $\theta_{tot}(h_c)$ is given by the soil-retention curve, so the equation can also be expressed as
-
-$$
-\frac{\partial \theta_{tot}}{\partial h_w}\frac{\partial h_w}{\partial t}-\nabla \cdot \left(k_{rel}K_s\nabla(h_w+z)\right)=0.
-$$
-
-See [03 Hydraulic parameterizations of frozen soil](03_Hydraulic_Parameterizations.md) for explanations on $k_{rel}$ and $\theta_{tot}(h_c)$.
+In the frozen soil, $k_{rel}=k_{rel}(h_c,T)$ depends on both capillary head and temperature. 
+See [03 Hydraulic parameterizations of frozen soil](03_Hydraulic_Parameterizations.md) for explanations on $k_{rel}$ and $\theta_{tot}$.
 
 ---
 

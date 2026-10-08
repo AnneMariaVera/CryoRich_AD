@@ -15,7 +15,7 @@ with $T$ in °C and
 
 ## 1. Derivation
 
-As local thermal equilibrium between all phases is assumed, a single integrated temperature field is solved for. The heat transport equation is derived from an energy balance, where energy can be transported convectively (advection with the specific discharge) and conductively (heat conduction). After applying the divergence theorem, the energy balance equation is given by
+As local thermal equilibrium between all phases is assumed, we solve for a single integrated temperature field. The heat transport equation is derived from an energy balance, where energy can be transported convectively (advection with the specific discharge) and conductively. After applying the divergence theorem, the energy balance equation is given by
 
 $$
 \frac{\partial}{\partial t}\int_V E \thinspace dV+\int_{ V}\nabla\cdot \mathbf{f}\thinspace d V = \int_V S \thinspace dV.
@@ -33,7 +33,7 @@ $$
 E = E_{sensible}+E_{latent}=C_{eq}T - \rho_i H_f \theta_i,
 $$
 
-where the latent part is negative because the latent heat $H_f$ is released when water freezes, so ice holds less energy than liquid water at the same temperature.
+where the latent part is negative because the latent heat $H_f$ is released when water freezes.
 
 The energy flux is
 
@@ -65,7 +65,7 @@ with the mass density $\rho_\gamma\thinspace [kg\thinspace m^{-3}]$, the specifi
 
 <!-- DRAFT: values taken from the simulation notebooks (notebooks/spinup, simulation, idealized, supplementary), please check -->
 
-**Values used in the simulations** (set in the notebooks and passed to `Geom.set_thermal_params`; the defaults in the code differ):
+**Values used in the simulations** (set in the notebooks and passed to `Geom.set_thermal_params`):
 
 | Phase | $\rho_\gamma\thinspace [kg\thinspace m^{-3}]$ | $\rho_\gamma c_\gamma\thinspace [J\thinspace m^{-3}K^{-1}]$ | $\lambda_\gamma\thinspace [W\thinspace m^{-1}K^{-1}]$ |
 |-------|------|------|-------|
@@ -76,16 +76,4 @@ with the mass density $\rho_\gamma\thinspace [kg\thinspace m^{-3}]$, the specifi
 
 and $\rho_iH_f = 3.34\cdot10^{8}\thinspace J\thinspace m^{-3}$, i.e. $H_f\approx3.64\cdot10^{5}\thinspace J\thinspace kg^{-1}$.
 
-<!-- END DRAFT -->
-
-## 3. Apparent heat capacity
-
-Under the assumption of thermal equilibrium (phase change is instantaneous), the ice content is a function of temperature, $\theta_i=\theta_i(T)$. Neglecting the change of $C_{eq}$ with time and changes of $\theta_i$ due to changes in $h_c$, the storage term can be written as
-
-$$
-\frac{\partial}{\partial t} \left(  C_{eq}T - \rho_i H_f \theta_i\right)\approx C_{eq}\frac{\partial T}{\partial t} - \rho_i H_f \frac{\partial \theta_i}{\partial T}\frac{\partial T}{\partial t}=\left(  C_{eq} - \rho_i H_f \frac{\partial \theta_i}{\partial T}\right)\frac{\partial T}{\partial t}.
-$$
-
-Since $\frac{\partial \theta_i}{\partial T}<0$, the apparent heat capacity $C_{app}=C_{eq} - \rho_i H_f \frac{\partial \theta_i}{\partial T}$ is larger than $C_{eq}$ within the freezing range.
-
-**Note:** the code does not use the apparent heat capacity. It discretizes the energy $E$ directly (see [04 Spatial and temporal discretization](04_Discretization.md)), which conserves energy (up to the solver tolerance) and needs none of the assumptions above.
+See [04 Spatial and temporal discretization](04_Discretization.md) for the details on the discretization of the heat transport equation. 
