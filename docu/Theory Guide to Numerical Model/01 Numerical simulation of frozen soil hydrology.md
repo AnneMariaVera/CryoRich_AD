@@ -4,10 +4,16 @@
 
 ![Conceptual model of water flow and heat transport in a partially frozen, sloped soil column](../Figures/concept.png)
 
-Primary variables: total hydraulic head ($H = z - h_c$) and temperature ($T$).
+Primary variables: total pressure head of water ($h_w$) and temperature ($T$).
 
-**Sign convention:** throughout this guide the capillary head $h_c \geq 0$ denotes suction (positive in the unsaturated zone, zero at saturation). The total hydraulic head is therefore $H = z - h_c$.
+**Sign convention:** throughout this guide the capillary head is defined by
 
+$$
+h_c = \begin{cases}
+        -h_w, &\text{if }h_w<0\\
+        0, &\text{otherwise.}
+    \end{cases}
+$$
 ## 2. Governing equations
 
 **Richards equation** for water flow in the variably saturated zone, written for the total water content $\theta = \theta_l + \theta_i$:
