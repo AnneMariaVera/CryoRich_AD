@@ -1,35 +1,48 @@
 # Explanations to the Heat Transport equation
 
-$$\frac{\partial}{\partial t} \left(  C_{eq}T - \rho_i H_f \theta_i\right)+ \nabla \cdot \left(\rho_l c_l \mathbf{q} T \right)- \nabla \cdot \left( \lambda_{eq} \nabla T \right) = 0 \tag{HT}
+$$\frac{\partial}{\partial t} \left(  C_{eq}T - \rho_i H_f \theta_i\right)+ \nabla \cdot \left(\mathbf{q}\, C_\ell T \right)- \nabla \cdot \left( \lambda_{eq} \nabla T \right) = 0 \tag{HT}
 $$
 
 with $T$ in °C and
 
-- $C_{eq}=\rho_lc_l\theta_l+\rho_ic_i\theta_i+\rho_ac_a\theta_a+\rho_sc_s(1-\theta_s)\;[\frac{J}{m^3K}]=[\frac{kg}{ms^2K}]$, the equivalent volumetric heat capacity, where $\theta_a=\theta_s-\theta_l-\theta_i$ is the air content and the porosity is given by $\theta_s$.
-- $\lambda_{eq} = \lambda_{l}^{\theta_l} \lambda_{i}^{\theta_i} \lambda_{a}^{\theta_a} \lambda_{s}^{1-\theta_s}\;[\frac{W}{mK}]=[\frac{kg\, m }{s^3K}]$, the equivalent thermal conductivity (geometric mean).
-- $H_f\,[\frac{J}{kg}]$, the latent heat of fusion.
-- $\mathbf{q}\,[\frac{m}{s}]$, the water flux from the Richards equation.
+- $\rho_i\,[kg\,m^{-3}]$, the mass density of ice,
+- $H_f\,[m^2s^{-2}]=[J\,kg^{-1}]$, the latent heat of fusion,
+- $C_\ell=\rho_\ell c_\ell\,[kg\,m^{-1}s^{-2}°C^{-1}]$, the volumetric heat capacity of liquid water,
+- $\mathbf{q}\,[m\,s^{-1}]$, the specific discharge of liquid water from the Richards equation,
+- $C_{eq}$, the equivalent volumetric heat capacity, given by the volume-weighted arithmetic mean over the ice, liquid, gas and matrix fractions (paper eq. (5))
+
+$$
+C_{eq}=\sum_\gamma\rho_\gamma c_\gamma\theta_\gamma=\rho_i c_i\theta_i+\rho_\ell c_\ell\theta_\ell+\rho_g c_g\theta_g+\rho_m c_m(1-n_e)\quad[kg\,m^{-1}s^{-2}°C^{-1}],
+$$
+
+- $\lambda_{eq}$, the equivalent thermal conductivity, given by the corresponding volume-weighted geometric mean (paper eq. (6))
+
+$$
+\lambda_{eq}=\prod_\gamma\lambda_\gamma^{\theta_\gamma}=\lambda_i^{\theta_i}\lambda_\ell^{\theta_\ell}\lambda_g^{\theta_g}\lambda_m^{1-n_e}\quad[kg\,m\,s^{-3}°C^{-1}],
+$$
+
+with the mass density $\rho_\gamma\,[kg\,m^{-3}]$, the specific heat capacity $c_\gamma\,[m^2s^{-2}°C^{-1}]$ and the thermal conductivity $\lambda_\gamma\,[kg\,m\,s^{-3}°C^{-1}]$ of phase $\gamma$. The gas content is $\theta_g=n_e-\theta_\ell-\theta_i$, and in the code the effective porosity $n_e$ is the saturated water content $\theta_s$.
 
 **Unit check:** each term has the unit $\frac{kg}{ms^3} = \frac{J}{sm^3}$.
 
-<!-- DRAFT: default values taken from Geom.set_thermal_params, please check -->
+<!-- DRAFT: values taken from the simulation notebooks (notebooks/spinup, simulation, idealized, supplementary), please check -->
 
-**Default values:**
+**Values used in the simulations** (set in the notebooks and passed to `Geom.set_thermal_params`; the defaults in the code differ):
 
-| Phase | Density $\rho\,[kg\,m^{-3}]$ | Specific heat capacity $c\,[J\,kg^{-1}K^{-1}]$ | Thermal conductivity $\lambda\,[W\,m^{-1}K^{-1}]$ |
+| Phase | $\rho_\gamma\,[kg\,m^{-3}]$ | $\rho_\gamma c_\gamma\,[J\,m^{-3}K^{-1}]$ | $\lambda_\gamma\,[W\,m^{-1}K^{-1}]$ |
 |-------|------|------|-------|
-| liquid water ($l$) | 1000 | 4180 | 0.6 |
-| ice ($i$) | 917 | 2100 | 2.2 |
-| air ($a$) | 1.1 | 1000 | 0.023 |
-| solid ($s$) | 2650 | 800 | 2.5 |
+| gas ($g$) | 1.1 | 1228.08 | 0.0262 |
+| ice ($i$) | 917 | $1.8952\cdot10^{6}$ | 2.14 |
+| liquid water ($\ell$) | 998 | $4.182\cdot10^{6}$ | 0.6 |
+| matrix ($m$) | 2650 | $1.92372\cdot10^{6}$ | 2.9 |
 
-and $H_f = 3.34\cdot10^{5}\,J\,kg^{-1}$.
+and $\rho_iH_f = 3.34\cdot10^{8}\,J\,m^{-3}$, i.e. $H_f\approx3.64\cdot10^{5}\,J\,kg^{-1}$.
 
 <!-- END DRAFT -->
 
 ## 1. Derivation
 
-The heat transport equation is derived from an energy balance, where energy can be transported convectively (advection with the water flux) and conductively (heat conduction). After applying the divergence theorem, the energy balance equation is given by
+As local thermal equilibrium between all phases is assumed, a single integrated temperature field is solved for. The heat transport equation is derived from an energy balance, where energy can be transported convectively (advection with the specific discharge) and conductively (heat conduction). After applying the divergence theorem, the energy balance equation is given by
 
 $$
 \frac{\partial}{\partial t}\int_V E \,dV+\int_{ V}\nabla\cdot \mathbf{f}\,d V = \int_V S \,dV.
@@ -47,16 +60,18 @@ $$
 E = E_{sensible}+E_{latent}=C_{eq}T - \rho_i H_f \theta_i,
 $$
 
-where the latent part is negative because the latent heat $H_f$ is released when water freezes, so ice holds less energy than liquid water at the same temperature. The energy flux is
+where the latent part is negative because the latent heat $H_f$ is released when water freezes, so ice holds less energy than liquid water at the same temperature.
+
+The energy flux is
 
 $$
-\mathbf{f} = \mathbf{f}_{conv}+\mathbf{f}_{cond}=\rho_l c_l \mathbf{q} T-\lambda_{eq} \nabla T.
+\mathbf{f} = \mathbf{f}_{conv}+\mathbf{f}_{cond}=\mathbf{q}\,C_\ell T-\lambda_{eq} \nabla T.
 $$
 
 Assuming that there are no internal sources or sinks ($S=0$), this results in
 
 $$
-\frac{\partial}{\partial t} \left(  C_{eq}T - \rho_i H_f \theta_i\right)+ \nabla \cdot \left(\rho_l c_l \mathbf{q} T \right)- \nabla \cdot \left( \lambda_{eq} \nabla T \right) = 0. \tag{HT}
+\frac{\partial}{\partial t} \left(  C_{eq}T - \rho_i H_f \theta_i\right)+ \nabla \cdot \left(\mathbf{q}\,C_\ell T \right)- \nabla \cdot \left( \lambda_{eq} \nabla T \right) = 0. \tag{HT}
 $$
 
 ## 2. Apparent heat capacity

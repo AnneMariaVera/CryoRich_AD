@@ -125,7 +125,8 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     q_evap_max = -Ksat_effective
     
     # Evaporation is limited by saturation (see Hydrogeosphere)
-    scaling = petro.evap_limit(Se_new[-1,:])
+    Se_l = (theta_l_new[-1,:] - Theta_r[-1,:]) / (Theta_s[-1,:] - Theta_r[-1,:])
+    scaling = petro.evap_limit(Se_l)
 
     # q_infil according to limits defined above
     q_inf_capped = jnp.where(

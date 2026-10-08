@@ -1,35 +1,48 @@
 # Numerical simulation of frozen soil hydrology
 
+The notation in this guide follows the publication *Groundwater Recharge or Runoff? Why the Hydraulic Parameterization of Frozen Soils Matters* (Hermann, Drews and Cirpka). Equation numbers of the form "paper eq. (x)" refer to that publication.
+
 ## 1. Conceptual Overview
 
 ![Conceptual model of water flow and heat transport in a partially frozen, sloped soil column](../Figures/concept.png)
 
-Primary variables: total pressure head of water ($h_w$) and temperature ($T$).
+Primary variables: pressure head of the pore water ($h_w$) and temperature ($T$).
 
-**Sign convention:** throughout this guide the capillary head is defined by
+The effective porosity $n_e$ of a partially frozen soil is the sum of the volumetric contents of ice $\theta_i$, liquid water $\theta_\ell$ and soil gas $\theta_g$ (paper eq. (1)):
+
+$$
+n_e = \theta_i + \theta_\ell + \theta_g.
+$$
+
+The total water content is $\theta_{tot}=\theta_i+\theta_\ell$.
+
+**Sign convention:** throughout this guide the capillary head is defined by (paper eq. (7))
 
 $$
 h_c = \begin{cases}
         -h_w, &\text{if }h_w<0\\
-        0, &\text{otherwise.}
+        0, &\text{otherwise,}
     \end{cases}
 $$
+
+and the total hydraulic head is $h_{tot}=h_w+z$.
+
 ## 2. Governing equations
 
-**Richards equation** for water flow in the variably saturated zone, written for the total water content $\theta = \theta_l + \theta_i$:
+**Richards equation** for water flow in the unsaturated zone (paper eqs. (2) and (3)):
 
-$$\frac{\partial \theta}{\partial t}-\nabla \cdot \left(k_{rel}(h_c,T)\,K_s\,\nabla(z-h_c)\right)=0\tag{RE}$$
+$$\frac{\partial \theta_{tot}}{\partial t}-\nabla \cdot \left(k_{rel}\,K_s\,\nabla(h_w+z)\right)=0\tag{RE}$$
 
 - [02 Explanations to the Richards Equation](02%20Explanations%20to%20the%20Richards%20Equation.md)
 - [02.1 Overview Hydraulic Parameters](02.1%20Overview%20Hydraulic%20Parameters.md)
 
-**Heat transport equation** for the temperature distribution [1]:
+**Heat transport equation** for the temperature distribution [1] (paper eq. (4)):
 
-$$\frac{\partial}{\partial t} \left( C_{eq}T - \rho_i H_f \theta_i \right)+ \nabla \cdot \left(\rho_l c_l \mathbf{q} T \right)- \nabla \cdot \left( \lambda_{eq} \nabla T \right) = 0 \tag{HT}$$
+$$\frac{\partial}{\partial t} \left( C_{eq}T - \rho_i H_f \theta_i \right)+ \nabla \cdot \left(\mathbf{q}\, C_\ell T \right)- \nabla \cdot \left( \lambda_{eq} \nabla T \right) = 0 \tag{HT}$$
 
 - [03 Explanations to the Heat Transport equation](03%20Explanations%20to%20the%20Heat%20Transport%20equation.md)
 
-Both equations are coupled through the liquid and ice contents $\theta_l(h_c,T)$, $\theta_i(h_c,T)$ and the relative permeability $k_{rel}(h_c,T)$, which depend on the chosen parametrization (see [02.1](02.1%20Overview%20Hydraulic%20Parameters.md)), and through the water flux $\mathbf{q}$, which transports heat.
+Both equations are coupled through the liquid and ice contents $\theta_\ell(h_c,T)$, $\theta_i(h_c,T)$ and the relative hydraulic conductivity $k_{rel}(h_c,T)$, which depend on the chosen parameterization (see [02.1](02.1%20Overview%20Hydraulic%20Parameters.md)), and through the specific discharge $\mathbf{q}$, which transports heat.
 
 ## 3. Numerical Solver (Finite Volume Method)
 
@@ -37,16 +50,16 @@ For the formulation of the residual functions of both equations see [04 Finite-V
 
 <!-- DRAFT: section below written from geometry.py (simulate_cap_bundle, newtonRaphson_cap_bundle), please check -->
 
-Both equations are solved fully coupled and fully implicitly. The vector of unknowns is
+Both equations are solved fully coupled with implicit Euler time integration. In the code, the hydraulic unknown is the total head $h_{tot}=h_w+z$, from which $h_w$ and $h_c$ follow. To improve convergence when temperature variations are large (freezing and thawing), the temperature is transformed to
 
 $$
-U=(H, y)^T, \qquad y = \operatorname{arcsinh}\left(\frac{T}{b}\right),\; b = 0.1\,°C,
+y = \operatorname{arcsinh}\left(\frac{T}{b}\right), \qquad b = 0.1,
 $$
 
-where the temperature is transformed with $y$ to improve the convergence around the freezing point. The residual vector is $R=(R_H,R_T)^T$ and the coupled Jacobian is
+prior to the Newton iteration and transformed back upon convergence. The vector of unknowns is thus $U=(h_{tot}, y)^T$, the residual vector is $R=(R_h,R_T)^T$ and the coupled Jacobian is
 
 $$
-J = \begin{pmatrix}\frac{\partial R_H}{\partial H} & \frac{\partial R_H}{\partial y}\\ \frac{\partial R_T}{\partial H} & \frac{\partial R_T}{\partial y}\end{pmatrix}.
+J = \begin{pmatrix}\frac{\partial R_h}{\partial h_{tot}} & \frac{\partial R_h}{\partial y}\\ \frac{\partial R_T}{\partial h_{tot}} & \frac{\partial R_T}{\partial y}\end{pmatrix}.
 $$
 
 The Jacobian is computed by automatic differentiation (JAX) using its known sparsity pattern (`sparsejac`). In each Newton-Raphson iteration the sparse linear system
@@ -55,7 +68,9 @@ $$
 J\Delta U=-R
 $$
 
-is solved and $U$ is updated. A time step is accepted once each residual component is below either its absolute or its relative tolerance (with respect to the residual of the first iteration).
+is solved. The update $U+\alpha\Delta U$ uses a backtracking line search (as in DuMux): starting with $\alpha=1$, $\alpha$ is halved until the residual norm no longer increases (down to $\alpha=10^{-6}$).
+
+**Convergence:** a time step is accepted once each residual (Richards and heat transport equation, evaluated separately) is below either its absolute tolerance or its relative tolerance with respect to the residual of the first iteration.
 
 **Adaptive time stepping:**
 - If the Newton-Raphson iteration does not converge within the maximum number of iterations (or the residual becomes NaN/inf), the time step is halved and repeated.
@@ -67,7 +82,7 @@ is solved and $U$ is updated. A time step is accepted once each residual compone
 
 <!-- DRAFT: please check and complete -->
 
-The model is compared to a simulation of the same synthetic case with the permaFoam solver [2] in OpenFOAM, using the impedance-factor parametrization in both codes. The comparison and a mass balance check are part of the supplementary material (`notebooks/supplementary/`).
+The model is compared to a simulation of the same synthetic case with the permaFoam solver [2] in OpenFOAM, using the impedance-factor parameterization ($\Omega=50$) in both codes. The comparison and a mass balance check are part of the supplementary material (`notebooks/supplementary/`).
 
 <!-- END DRAFT -->
 
