@@ -232,7 +232,10 @@ def interpolate_parameter_imp50(Se, T, soil_type, filename, method='monotonic', 
         theta_l = jnp.array(theta_l_ar)
         theta_i = jnp.array(theta_i_ar)
 
-        #theta_i_interp = inter.interpolate_parameter(hc, T, theta_i.T, method='monotonic'
+        # interpolate k_rel to the grid
+        k_rel_interp = ipx.Interpolator2D(jnp.sort(hc), T, k_rel[:,::-1].T, method=method,extrap=extrapolate)
+        theta_l_interp = ipx.Interpolator2D(jnp.sort(hc), T, theta_l[:,::-1].T, method=method,extrap=extrapolate)
+
         soil_type[soil_id]["k_rel_interp"] = k_rel_interp
         soil_type[soil_id]["theta_l_interp"] = theta_l_interp
         del hc, k_rel, theta_l,Se_l, k_rel_interp, theta_l_interp
