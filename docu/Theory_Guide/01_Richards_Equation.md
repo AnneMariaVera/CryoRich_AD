@@ -34,6 +34,7 @@ $$
 \frac{\theta_\ell}{\rho_\ell}\frac{\partial \rho_\ell}{\partial t}\ll\frac{\partial \theta_\ell}{\partial t}.
 $$
 
+
 In addition, the density difference between ice and liquid water is neglected ($\rho_i\approx\rho_\ell$), so that the volume of water does not change when it freezes. Dividing by $\rho_\ell$ gives
 
 $$

@@ -26,21 +26,11 @@ is solved. The update $U+\alpha\Delta U$ uses a backtracking line search (as in 
 
 **Convergence:** a time step is accepted once each residual (Richards and heat transport equation, evaluated separately) is below either its absolute tolerance or its relative tolerance with respect to the residual of the first iteration.
 
-<!-- END DRAFT -->
-
 ## 2. Adaptive time stepping
-
-<!-- DRAFT: section below written from geometry.py (simulate_cap_bundle, newtonRaphson_cap_bundle), please check -->
 
 - If the Newton-Raphson iteration does not converge within the maximum number of iterations (or the residual becomes NaN/inf), the time step is halved and repeated.
 - If it converges within the minimum number of iterations for more than two consecutive time steps, the time step is increased by a factor of 1.2, up to a prescribed maximum time step.
 
-<!-- END DRAFT -->
-
 ## 3. Lookup tables
 
-<!-- DRAFT: written from parameter_interpolation.py, please check -->
-
 Evaluating the parameterizations (in particular the integrals of the capillary bundle model, see [03 Hydraulic parameterizations of frozen soil](03_Hydraulic_Parameterizations.md)) during the simulation would be too expensive. Therefore $\theta_\ell$ and $k_{rel}$ are precomputed once for each soil type on a grid of capillary heads $h_c$ (from $S\in(0,1)$) and temperatures $T$, and stored as 2D interpolators (`interpax.Interpolator2D`, monotonic interpolation). These lookup tables are saved under `input/interpolation/` and evaluated in each Newton-Raphson iteration. Since the interpolators are differentiable, the Jacobian can still be computed by automatic differentiation.
-
-<!-- END DRAFT -->

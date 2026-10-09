@@ -18,7 +18,6 @@ $$
 
 where $\Delta\phi_z$, $\Delta\phi_x$ are the differences between the neighboring cell centers and $\frac{\partial}{\partial \xi}=\frac{\partial}{\partial x}+s\frac{\partial}{\partial z}$ is the derivative along a row. Because the line connecting two neighboring cell centers is not perpendicular to their shared face, the difference $\Delta\phi$ alone does not give the normal gradient. The correction terms contain the tangential derivatives ($\frac{\partial\phi}{\partial\xi}$ along the tilted faces, $\frac{\partial\phi}{\partial z}$ along the vertical faces), which are evaluated explicitly from the previous time step (deferred correction).
 
-<!-- END DRAFT -->
 
 ## 2. Finite-volume formulation
 
@@ -140,7 +139,6 @@ The specific discharges $\mathbf{q}$ are taken from the Richards equation at the
 
 ### 5.1 Boundary conditions
 
-<!-- DRAFT: written from volbal.vertical_condflux_update / vertical_convflux_update, please check -->
 
 **Top:** the surface temperature $T_{surface}$ (see Forcing in [00 Overview](00_Overview.md)) is applied at the surface, half a cell ($\Delta z/2$) above the center of the top cell. The conductive flux is
 
@@ -154,7 +152,6 @@ where the factor $\sqrt{1+s^2}$ accounts for the tilted surface. Infiltrating wa
 
 **Bottom, Left:** zero-flux boundaries ($f_{cond}=0$ and $f_{conv}=0$).
 
-<!-- END DRAFT -->
 
 ---
 

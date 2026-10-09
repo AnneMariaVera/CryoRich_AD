@@ -166,4 +166,3 @@ To keep the simulations efficient, $\theta_\ell$ and $k_{rel}$ of all parameteri
 
 [8] Y. Mualem, “A new model for predicting the hydraulic conductivity of unsaturated porous media,” _Water Resources Research_, vol. 12, no. 3, pp. 513–522, 1976, doi: [10.1029/WR012i003p00513](https://doi.org/10.1029/WR012i003p00513).
 
-<!-- END DRAFT -->

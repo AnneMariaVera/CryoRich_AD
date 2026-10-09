@@ -63,7 +63,6 @@ $$
 
 with the mass density $\rho_\gamma\thinspace [kg\thinspace m^{-3}]$, the specific heat capacity $c_\gamma\thinspace [m^2s^{-2}°C^{-1}]$ and the thermal conductivity $\lambda_\gamma\thinspace [kg\thinspace m\thinspace s^{-3}°C^{-1}]$ of phase $\gamma$. The gas content is $\theta_g=n_e-\theta_\ell-\theta_i$, and in the code the effective porosity $n_e$ is the saturated water content $\theta_s$.
 
-<!-- DRAFT: values taken from the simulation notebooks (notebooks/spinup, simulation, idealized, supplementary), please check -->
 
 **Values used in the simulations** (set in the notebooks and passed to `Geom.set_thermal_params`):
 
