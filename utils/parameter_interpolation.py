@@ -6,7 +6,6 @@ import utils.petrophysic as petro
 import pickle as pkl
 import os.path
 
-# @partial(jax.jit, static_argnames=['hc','T','method'])
 def interpolate_parameter(Se, T, soil_type, filename, parametrization, method='monotonic', extrapolate=True):
     if parametrization == "cap":
         return interpolate_parameter_cap(Se, T, soil_type, filename, method=method, extrapolate=extrapolate)
@@ -24,10 +23,9 @@ def interpolate_parameter(Se, T, soil_type, filename, parametrization, method='m
         raise ValueError(f"Unknown parametrization: {parametrization}") 
     
 def interpolate_parameter_cap(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
-    # assert vals.shape == (len(hc), len(T)), f"vals should have shape ({len(hc)}, {len(T)})"
-    # assert jnp.all(hc == jnp.sort(hc)), "hc should be sorted in ascending order"
-    # assert jnp.all(T == jnp.sort(T)), "T should be sorted in ascending order"
+
     assert filename.endswith(".pkl"), "filename should end with .pkl"
+
     if os.path.isfile(filename):
         with open(filename, "rb") as f:
             soil_type = pkl.load(f)
@@ -60,16 +58,6 @@ def interpolate_parameter_cap(Se, T, soil_type, filename, method='monotonic', ex
 
         # Calculate k_rel from theta_l and theta_i
         k_rel = petro_cap.k_rel_Mualem(Se, Se_l, R,ri, N)
-        #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
-        # hc = jnp.append(hc,0)
-        # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
-        # print("theta_l shape: ", theta_l.shape)
-        # print("theta_i shape: ", theta_i.shape)
-        # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
-        # theta_i = jnp.concatenate([theta_i,jnp.ones((theta_i.shape[0],1))*Theta_s],axis=1)
-
-        # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
-        # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
         
         idx_sort = jnp.argsort(hc)
 
@@ -89,12 +77,10 @@ def interpolate_parameter_cap(Se, T, soil_type, filename, method='monotonic', ex
     
     return soil_type
 
-# @partial(jax.jit, static_argnames=['hc','T','method'])
 def interpolate_parameter_drying(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
-    # assert vals.shape == (len(hc), len(T)), f"vals should have shape ({len(hc)}, {len(T)})"
-    # assert jnp.all(hc == jnp.sort(hc)), "hc should be sorted in ascending order"
-    # assert jnp.all(T == jnp.sort(T)), "T should be sorted in ascending order"
+    
     assert filename.endswith(".pkl"), "filename should end with .pkl"
+
     if os.path.isfile(filename):
         with open(filename, "rb") as f:
             soil_type = pkl.load(f)
@@ -131,14 +117,6 @@ def interpolate_parameter_drying(Se, T, soil_type, filename, method='monotonic',
         theta_l = jnp.array(theta_l_ar)
         theta_i = jnp.array(theta_i_ar)
 
-        #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
-        # hc = jnp.append(hc,0)
-        # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
-        # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
-
-        # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
-        # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
-
         # interpolate k_rel to the grid
         k_rel_interp = ipx.Interpolator2D(jnp.sort(hc), T, k_rel[:,::-1].T, method=method,extrap=extrapolate)
         theta_l_interp = ipx.Interpolator2D(jnp.sort(hc), T, theta_l[:,::-1].T, method=method,extrap=extrapolate)
@@ -154,10 +132,9 @@ def interpolate_parameter_drying(Se, T, soil_type, filename, method='monotonic',
     return soil_type
 
 def interpolate_parameter_drying_omega10(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
-    # assert vals.shape == (len(hc), len(T)), f"vals should have shape ({len(hc)}, {len(T)})"
-    # assert jnp.all(hc == jnp.sort(hc)), "hc should be sorted in ascending order"
-    # assert jnp.all(T == jnp.sort(T)), "T should be sorted in ascending order"
+
     assert filename.endswith(".pkl"), "filename should end with .pkl"
+ 
     if os.path.isfile(filename):
         with open(filename, "rb") as f:
             soil_type = pkl.load(f)
@@ -198,14 +175,6 @@ def interpolate_parameter_drying_omega10(Se, T, soil_type, filename, method='mon
         theta_l = jnp.array(theta_l_ar)
         theta_i = jnp.array(theta_i_ar)
 
-        # #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
-        # hc = jnp.append(hc,0)
-        # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
-        # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
-
-        # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
-        # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
-
         # interpolate k_rel to the grid
         k_rel_interp = ipx.Interpolator2D(jnp.sort(hc), T, k_rel[:,::-1].T, method=method,extrap=extrapolate)
         theta_l_interp = ipx.Interpolator2D(jnp.sort(hc), T, theta_l[:,::-1].T, method=method,extrap=extrapolate)
@@ -221,9 +190,7 @@ def interpolate_parameter_drying_omega10(Se, T, soil_type, filename, method='mon
     return soil_type
 
 def interpolate_parameter_imp50(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
-    # assert vals.shape == (len(hc), len(T)), f"vals should have shape ({len(hc)}, {len(T)})"
-    # assert jnp.all(hc == jnp.sort(hc)), "hc should be sorted in ascending order"
-    # assert jnp.all(T == jnp.sort(T)), "T should be sorted in ascending order"
+
     assert filename.endswith(".pkl"), "filename should end with .pkl"
     if os.path.isfile(filename):
         with open(filename, "rb") as f:
@@ -265,18 +232,6 @@ def interpolate_parameter_imp50(Se, T, soil_type, filename, method='monotonic', 
         theta_l = jnp.array(theta_l_ar)
         theta_i = jnp.array(theta_i_ar)
 
-
-        #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
-        # hc = jnp.append(hc,0)
-        # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
-        # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
-        # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
-        # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
-
-        # interpolate k_rel to the grid
-        k_rel_interp = ipx.Interpolator2D(jnp.sort(hc), T, k_rel[:,::-1].T, method=method,extrap=extrapolate)
-        theta_l_interp = ipx.Interpolator2D(jnp.sort(hc), T, theta_l[:,::-1].T, method=method,extrap=extrapolate)
-
         #theta_i_interp = inter.interpolate_parameter(hc, T, theta_i.T, method='monotonic'
         soil_type[soil_id]["k_rel_interp"] = k_rel_interp
         soil_type[soil_id]["theta_l_interp"] = theta_l_interp
@@ -289,9 +244,7 @@ def interpolate_parameter_imp50(Se, T, soil_type, filename, method='monotonic', 
     return soil_type
 
 def interpolate_parameter_imp10(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
-    # assert vals.shape == (len(hc), len(T)), f"vals should have shape ({len(hc)}, {len(T)})"
-    # assert jnp.all(hc == jnp.sort(hc)), "hc should be sorted in ascending order"
-    # assert jnp.all(T == jnp.sort(T)), "T should be sorted in ascending order"
+
     assert filename.endswith(".pkl"), "filename should end with .pkl"
     if os.path.isfile(filename):
         with open(filename, "rb") as f:
@@ -333,14 +286,6 @@ def interpolate_parameter_imp10(Se, T, soil_type, filename, method='monotonic', 
         theta_l = jnp.array(theta_l_ar)
         theta_i = jnp.array(theta_i_ar)
 
-
-        #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
-        # hc = jnp.append(hc,0)
-        # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
-        # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
-        # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
-        # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
-
         # interpolate k_rel to the grid
         k_rel_interp = ipx.Interpolator2D(jnp.sort(hc), T, k_rel[:,::-1].T, method=method,extrap=extrapolate)
         theta_l_interp = ipx.Interpolator2D(jnp.sort(hc), T, theta_l[:,::-1].T, method=method,extrap=extrapolate)
@@ -348,7 +293,7 @@ def interpolate_parameter_imp10(Se, T, soil_type, filename, method='monotonic', 
         #theta_i_interp = inter.interpolate_parameter(hc, T, theta_i.T, method='monotonic'
         soil_type[soil_id]["k_rel_interp"] = k_rel_interp
         soil_type[soil_id]["theta_l_interp"] = theta_l_interp
-        #del hc, k_rel, theta_l,Se_l, k_rel_interp, theta_l_interp
+        del hc, k_rel, theta_l,Se_l, k_rel_interp, theta_l_interp
     
     with open(filename, "wb") as f:
         pkl.dump(soil_type, f)
@@ -357,10 +302,9 @@ def interpolate_parameter_imp10(Se, T, soil_type, filename, method='monotonic', 
     return soil_type
 
 def interpolate_parameter_permaFoam_synthetic_case(Se, T, soil_type, filename, method='monotonic', extrapolate=True):
-    # assert vals.shape == (len(hc), len(T)), f"vals should have shape ({len(hc)}, {len(T)})"
-    # assert jnp.all(hc == jnp.sort(hc)), "hc should be sorted in ascending order"
-    # assert jnp.all(T == jnp.sort(T)), "T should be sorted in ascending order"
+
     assert filename.endswith(".pkl"), "filename should end with .pkl"
+
     if os.path.isfile(filename):
         with open(filename, "rb") as f:
             soil_type = pkl.load(f)
@@ -401,19 +345,10 @@ def interpolate_parameter_permaFoam_synthetic_case(Se, T, soil_type, filename, m
         theta_l = jnp.array(theta_l_ar)
         theta_i = jnp.array(theta_i_ar)
 
-
-        #theta_l = jnp.append(theta_l, jnp.ones((1,theta_l.shape[1]))*(Theta_s), axis=0)  # add theta_l = Theta_s at saturation
-        # hc = jnp.append(hc,0)
-        # k_rel = jnp.concatenate([k_rel,jnp.ones((k_rel.shape[0],1))],axis=1)
-        # theta_l = jnp.concatenate([theta_l,jnp.ones((theta_l.shape[0],1))*Theta_s],axis=1)
-        # k_rel = k_rel.at[:,-1].set(jnp.where(theta_i[:,-1]>0, k_rel[:,-2], 1))
-        # theta_l = theta_l.at[:,-1].set(jnp.where(theta_i[:,-1]>0, theta_l[:,-2], Theta_s))
-
         # interpolate k_rel to the grid
         k_rel_interp = ipx.Interpolator2D(jnp.sort(hc), T, k_rel[:,::-1].T, method=method,extrap=extrapolate)
         theta_l_interp = ipx.Interpolator2D(jnp.sort(hc), T, theta_l[:,::-1].T, method=method,extrap=extrapolate)
 
-        #theta_i_interp = inter.interpolate_parameter(hc, T, theta_i.T, method='monotonic'
         soil_type[soil_id]["k_rel_interp"] = k_rel_interp
         soil_type[soil_id]["theta_l_interp"] = theta_l_interp
         del hc, k_rel, theta_l,Se_l, k_rel_interp, theta_l_interp

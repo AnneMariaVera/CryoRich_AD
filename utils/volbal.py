@@ -33,55 +33,79 @@ def normal_gradient_vertical_face(diff_row, dx, s, Gz_face):
     """
     return diff_row / dx - s * Gz_face
 
+def combine_by_soil(soil, soil_type,soil_ids,interp_key, h_c, T):
+        field = soil_type[soil_ids[0]][interp_key](h_c.flatten(), T.flatten()).reshape(h_c.shape)
+        for soil_id in soil_ids[1:]:
+            field = jnp.where(soil == soil_id, soil_type[soil_id][interp_key](h_c.flatten(), T.flatten()).reshape(h_c.shape), field)
+        return field
 
 @partial(jax.jit,static_argnames=(['rho_i', 'rho_l', 'rho_a', 'rho_s', 
                                     'c_i', 'c_l', 'c_a', 'c_s',
                                     'lambda_i', 'lambda_l', 'lambda_a', 'lambda_s',
                                     'H_f', 'nx', 'nz', 'dx', 'dz']))
-def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt, 
+def volbal(T_new, T_old, htot_new, htot_old, q_inf, T_surface, dt, 
                              soil,soil_type, Theta_s,Theta_r, alpha, N, Ksat, H_f,
                              rho_i, rho_l, rho_a, rho_s, 
                              c_i, c_l, c_a, c_s,
                              lambda_i, lambda_l, lambda_a, lambda_s, 
                              Z, nz, nx, dx, dx_tilde, dz):
     """
-    Calculates the residual of the heat equation with phase change.
+    Calculates the residual of the coupled Richards and heat equation with phase change
+    (fully implicit, sheared finite-volume mesh).
+
     Parameters
     ----------
     T_new, T_old : array (nz, nx)
-        Temperature field at t+1 and t.
+        Temperature at t+1 and t [°C].
     htot_new, htot_old : array (nz, nx)
-        Hydraulic head fields, used for advection.
-    qx, qz : array
-        Darcy fluxes at faces (m/s), shape (nz, nx+1) and (nz+1, nx).
-    rho_l : float
-        Density of liquid water [kg/m³].
-    C_l : float
-        Specific heat of liquid water [J/(kg K)].
-    C_eq : array or float
-        Equivalent volumetric heat capacity [J/(m³ K)].
-    lambda_eq : array or float
-        Effective thermal dtconducnormrestivity [W/(m K)].
-    H_f : float
-        Latent heat of fusion [J/kg].
-    theta_i_new, theta_i_old : array
-        Volumetric ice content at t+1 and t.
-    X, Z : mesh coordinate arrays.
+        Total hydraulic head at t+1 and t [m]; primary unknown of the Richards equation.
+    q_inf : array (nx,)
+        Surface water flux [m/s], positive = infiltration, negative = evaporation.
+        Capped by the ice-reduced Ksat; the excess (and any ponding) becomes runoff.
+    T_surface : array (nx,)
+        Surface temperature, used as Robin-type BC for the heat equation [°C].
     dt : float
         Time step [s].
-    CN : float
-        Crank–Nicolson weighting (0.5 = semi-implicit).
+    soil : array (nz, nx)
+        Soil-type index per cell (1 or 2).
+    soil_type : dict
+        Per soil type: "theta_l_interp" and "k_rel_interp" interpolators in (h_c, T).
+    Theta_s, Theta_r, alpha, N : array (nz, nx)
+        van Genuchten parameters (porosity, residual water content, alpha [1/m], N [-]).
+    Ksat : array (nz, nx)
+        Saturated hydraulic conductivity [m/s].
+    H_f : float
+        Latent heat of fusion [J/kg].
+    rho_i, rho_l, rho_a, rho_s : float
+        Densities of ice, liquid water, air and solid matrix [kg/m³].
+    c_i, c_l, c_a, c_s : float
+        Specific heat capacities of ice, liquid water, air and solid matrix [J/(kg K)].
+    lambda_i, lambda_l, lambda_a, lambda_s : float
+        Thermal conductivities of ice, liquid water, air and solid matrix [W/(m K)].
+    Z : array (nz, nx)
+        Cell-centre elevations [m]; the mesh shear s is taken from Z.
+    nz, nx : int
+        Number of cells in z and x direction.
+    dx, dz : float
+        Grid spacing [m].
+    dx_tilde : float
+        Length of the tilted top/bottom cell faces, sqrt(dx² + (s·dx)²) [m].
 
     Returns
     -------
-    res_T : array (nz, nx)
-        Heat equation residual.
-    qT_adv : tuple (qx_adv, qz_adv)
-        Advective heat fluxes in x/z direction.
-    qT_cond : tuple (qx_cond, qz_cond)
-        Conductive heat fluxes in x/z direction.
+    res_total : array (2*nz*nx,)
+        Richards residual followed by heat residual (flattened).
+    q_runoff : array (nx,)
+        Surface runoff (infiltration excess + saturation excess) [m/s].
+    qx, qz : array (nz, nx+1), (nz+1, nx)
+        Darcy fluxes at cell faces [m/s].
+    qx_centered, qz_centered : array (nz, nx)
+        Darcy fluxes interpolated to cell centres [m/s].
+    theta_l_new, theta_i_new : array (nz, nx)
+        Liquid water and ice content at t+1 [-].
     """ 
-
+    
+    soil_ids = list(soil_type.keys())
 
     # Mesh shear (dZ/dX along a row). s = 0 recovers the flat-mesh discretisation exactly.
     s = (Z[0, 1] - Z[0, 0]) / dx
@@ -99,22 +123,25 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     Theta_new = Se_new * (Theta_s - Theta_r) + Theta_r
 
     # Phase separation between ice and liquid, 
-    # Clipping to ensure that both water content and ice content are between residual water content and porosity. Deviations could happen due to interpolation errors in theta_l and theta_i
-    theta_l_old = jnp.clip(jnp.where(soil==1, soil_type[1]["theta_l_interp"](h_c_old.flatten(), T_old.flatten()).reshape(h_c_old.shape), soil_type[2]["theta_l_interp"](h_c_old.flatten(), T_old.flatten()).reshape(h_c_old.shape)),Theta_r,Theta_old) #jnp.where(T_old<=0,jnp.clip(jnp.where(soil==1, soil_type[1]["theta_l_interp"](h_c_old.flatten(), T_old.flatten()).reshape(h_c_old.shape), soil_type[2]["theta_l_interp"](h_c_old.flatten(), T_old.flatten()).reshape(h_c_old.shape)),Theta_r,Theta_old),Theta_old)
-    theta_l_new = jnp.clip(jnp.where(soil==1, soil_type[1]["theta_l_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape), soil_type[2]["theta_l_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape)),Theta_r,Theta_new) #jnp.where(T_new<=0,jnp.clip(jnp.where(soil==1, soil_type[1]["theta_l_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape), soil_type[2]["theta_l_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape)),Theta_r,Theta_new),Theta_new)
+    # Clipping to ensure that both water content and ice content are between residual water content / 0 and porosity. Deviations could happen due to interpolation errors in theta_l and theta_i
+    theta_l_old = jnp.clip(combine_by_soil(soil, soil_type, soil_ids, "theta_l_interp", h_c_old, T_old),Theta_r,Theta_old)
+    theta_l_new = jnp.clip(combine_by_soil(soil, soil_type, soil_ids, "theta_l_interp", h_c_new, T_new),Theta_r,Theta_new)
 
     theta_i_old = jnp.clip(Theta_old - theta_l_old, 0, Theta_s)
     theta_i_new = jnp.clip(Theta_new - theta_l_new, 0, Theta_s)
 
     # Relative permeability
-    krel_new =jnp.where(soil==1, soil_type[1]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape), soil_type[2]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape)) #jnp.where(T_new<=0, jnp.where(soil==1, soil_type[1]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape), soil_type[2]["k_rel_interp"](h_c_new.flatten(), T_new.flatten()).reshape(h_c_new.shape)), petro.relperm(Se_new, N))
+    # Clipping to ensure that krel will not become smaller than machine precision.
+    krel_new = combine_by_soil(soil, soil_type, soil_ids, "k_rel_interp", h_c_new, T_new)
     krel_new = jnp.clip(krel_new,10*eps64,1)
+
     # Storage term in residuum
     res_rich = (Theta_new - Theta_old)/dt
 
     # .....................   Evaporation and runoff handling  ..............................
     # Calculate effective Ksat due to ice for Horton excess flow and evaporation
     S_effective = (Theta_s[-1,:] - theta_i_new[-1,:] - Theta_r[-1,:]) / (Theta_s[-1,:] - Theta_r[-1,:])
+
     # h_from_S has an infinite derivative at S = 1 (ice-free surface cell, theta_i = 0), which turns
     # the Jacobian into NaN. Keep S inside the saturation range of the lookup tables.
     S_effective = jnp.clip(S_effective, 1e-6, 1 - 1e-7)
@@ -140,7 +167,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     q_runoff = jnp.maximum(q_inf-q_inf_capped,0)
 
     # We additinally need to ensure that no water column builds up above the surface
-    # If hw = htot - Z > 0 at surface, this excess becomes runoff
+    # If hw = htot - Z > 0 at surface, this excess becomes runoff (Dunne overland flow)
     hw_surface = htot_new[-1, :] - Z[-1, :]
     q_horton = jnp.maximum(hw_surface, 0.0) / dt
     q_runoff += q_horton
@@ -148,10 +175,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     # Adjust q_infil to account for excess water 
     q_infil = q_inf_capped - q_horton  
 
-    # q_infil = q_inf
-    # q_runoff = jnp.maximum(q_inf - q_infil, 0.0)
-
-    # Initialise flux arrays containing fluxes over cell boundaries
+    # Initialise flux arrays containing fluxes over cell faces
     qx = jnp.zeros((nz, nx + 1)) 
     qz = jnp.zeros((nz + 1, nx))
 
@@ -162,7 +186,7 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
     # ........................  Richards equation flux updates  .........................
     # Cross derivatives needed to turn the centre-to-centre differences into true
     # face-normal gradients on the sheared mesh. They are lagged to the old time level
-    # (deferred correction) so the Jacobian keeps its 5-point stencil.
+    # (deferred correction).
     Gz_h_old = jnp.gradient(htot_old, dz, axis=0)   # d/dz along a column (exact)
     Gxi_h_old = jnp.gradient(htot_old, dx, axis=1)  # d/dxi along a (sheared) row
 
@@ -206,7 +230,6 @@ def volbal_cappillary_bundle(T_new, T_old, htot_new, htot_old, q_inf, T_surface,
 def vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, s, Gxi_h):
     """
     Update vertical fluxes and residuals.
-    Allows water table above surface - convergence handled in residual via capillary bundle terms.
 
     On the sheared mesh the top/bottom faces are tilted, so the flux is driven by the
     face-normal gradient, not by the plain vertical centre difference. The cross term
@@ -232,7 +255,7 @@ def vertical_flux_update(qz, Ksat, htot_new, krel_new, dz, dx, dx_tilde, s, Gxi_
     q_val = -Kint * kr_new * grad_n
     qz = qz.at[1:-1,:].set(q_val)
     
-    # Geometric factor (integration of flux over )
+    # Geometric factor (integration of flux over)
     geofac = dx_tilde / (dz * dx)
 
     # Add flux from top cell to bottom cell
@@ -283,7 +306,7 @@ def horizontal_flux_update(qx, Ksat, htot_new, h_c_new, krel_new, dx, dx_tilde, 
     # elevation is Z[:,-1] + s*dx/2. The normal distance to the centre is dx/2 (the face is
     # vertical), and the cross term s*dH/dz is removed as for the interior faces.
     # On a seeping face the head is prescribed as H = z, so its along-face derivative dH/dz is
-    # exactly 1 (no lagging needed for the cross term here).
+    # exactly 1.
     Z_face = Z[:, -1] + s * dx / 2
     grad_n_bc = normal_gradient_vertical_face(Z_face - htot_new[:, -1], dx / 2, s, 1.0)
     q_r = jnp.where(h_c_new[:,-1]>0, jnp.zeros_like(Ksat[:,-1]), -Ksat[:,-1] * grad_n_bc)
@@ -303,6 +326,7 @@ def horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde, s, Gz_T):
     solved implicitly (Gz_T).
     """
     res = jnp.zeros_like(T_new)
+
     # Calculate the average thermal conductivity between cells
     lambda_int_new = 2 * lambda_eff_new[:, 1:] * lambda_eff_new[:, :-1] / (lambda_eff_new[:, 1:] + lambda_eff_new[:, :-1])
     diff_T_new = T_new[:, 1:] - T_new[:, :-1]
@@ -311,7 +335,7 @@ def horizontal_condflux_update(lambda_eff_new, T_new, dx, dx_tilde, s, Gz_T):
     Gz_face = 0.5 * (Gz_T[:, :-1] + Gz_T[:, 1:])
     q = -lambda_int_new * normal_gradient_vertical_face(diff_T_new, dx, s, Gz_face)
 
-    # Calculate convective term in residual, the geometric factor is again dz/(dz*dx)=1/dx
+    # Calculate conductive term in residual, the geometric factor is again dz/(dz*dx)=1/dx
     # right side flux
     res = res.at[:, :-1].add(q / dx)
     # left side flux
@@ -328,6 +352,7 @@ def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde,
     face-normal one; the along-row cross term is solved implicitly (Gxi_T).
     """
     res = jnp.zeros_like(T_new)
+    
     # Calculate the average thermal conductivity between cells
     lambda_int_new = 2 * lambda_eff_new[:-1, :] * lambda_eff_new[1:, :] / (lambda_eff_new[:-1, :] + lambda_eff_new[1:, :])
     diff_T_new = T_new[1:, :]-T_new[:-1, :]
@@ -342,7 +367,7 @@ def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde,
     # from the top cell centre to the tilted surface is (dz/2)/sqrt(1+s^2)).
     q_surf = -(lambda_eff_new[-1,:]*(T_surface-T_new[-1,:])/(dz/2)) * jnp.sqrt(1 + s**2)
 
-    # Calculate convective term in residual
+    # Calculate conductive term in residual
     # bottom fluxes
     res = res.at[1:, :].add(-q * dx_tilde / (dz*dx))
     # top fluxes
@@ -353,7 +378,7 @@ def vertical_condflux_update(lambda_eff_new, T_new, T_surface, dz, dx, dx_tilde,
 
 def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde):
     """
-    Update vertical conductive heat fluxes and residuals.
+    Update vertical convective heat fluxes and residuals.
     """
     res = jnp.zeros_like(T_new)
 
@@ -362,7 +387,7 @@ def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde)
     T_new = jnp.concatenate([jnp.concatenate([T_new[:1,:],T_new],axis=0),T_surface[None,:]],axis=0)
     T_interface_new = jnp.where(cond, T_new[:-1, :], T_new[1:, :])
 
-    # Calculate cond. heat fluxes
+    # Calculate convective heat fluxes
     q_bottom = -qz[:-1, :] * c_l * rho_l * T_interface_new[:-1,:]
 
     q_top = qz[1:, :] * c_l * rho_l * T_interface_new[1:,:]
@@ -374,7 +399,7 @@ def vertical_convflux_update(qz, c_l, T_new, T_surface, rho_l, dz, dx, dx_tilde)
 
 def horizontal_convflux_update(qx, c_l, T_new, rho_l, dx):
     """
-    Update vertical conductive heat fluxes and residuals.
+    Update horizontal convective heat fluxes and residuals.
     """
     res = jnp.zeros_like(T_new)
     # Calculate interface temperatures
@@ -383,7 +408,7 @@ def horizontal_convflux_update(qx, c_l, T_new, rho_l, dx):
     T_new_app = jnp.concatenate([T_new[:,:1],jnp.concatenate([T_new,T_new[:,-1:]],axis=1)],axis=1)
     T_interface_new = jnp.where(cond, T_new_app[:, :-1], T_new_app[:, 1:])
 
-    # Calculate cond. heat fluxes
+    # Calculate convective heat fluxes
     q_left = -qx[:, :-1] * c_l * rho_l * T_interface_new[:,:-1]
     q_right = qx[:, 1:] * c_l * rho_l * T_interface_new[:,1:]
 

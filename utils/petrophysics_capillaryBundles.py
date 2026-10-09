@@ -43,10 +43,6 @@ def r_i(R, T_array, A = -10.**(-19.5), rho_i = 917, L_f = 3.34e5, T_m = 273.15, 
     # compute common factor safely for T < T_m
     denom = jnp.where(T < T_m, (T_m - T), 1.0)
 
-    # deltaT = T_m - T
-    # denom = jnp.where(T < T_m,
-    #                 jnp.sqrt(deltaT**2),
-    #                 1.0)
     common = jnp.where(T < T_m, T_m / denom, 0.0)   # = T_m/(T_m-T) for T<T_m, else 0
 
     # film thickness d(T) and critical radius r_GT(T)
@@ -159,7 +155,6 @@ def k_rel_Mualem(Se, Seu, R, ri, N):
     for i in range(ri.shape[0]):
         # denominator for Watanabe-Mualam model
         denom = simpson((Se**(N/(1-N))-1)**(-1/N),Se)
-        # denom = jnp.where(jnp.isinf(denom), 1., denom)  # avoid division by zero
         # nominator for Watanabe-Mualam model with ice
         nom = cumulative_trapezoid((Se**(N/(1-N))-1)**(-1/N)*f_q(R, ri[i,:]),
                                 Se,initial=0.)

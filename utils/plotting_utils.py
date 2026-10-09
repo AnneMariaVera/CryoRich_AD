@@ -706,7 +706,7 @@ def plot_theta_l_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, tit
 
     ax.set_xlabel(r'$h_c$ [m]')
     ax.set_ylabel(r'$T$ [°C]')
-    ax.set_zlabel(r'$k_{rel}$ [-]')
+    ax.set_zlabel(r'$\theta_{l}$ [-]')
 
     label = parametrisation_label(param)
     if label:

@@ -1,39 +1,3 @@
-"""
-Parse raw permaFoam OpenFOAM output (the numbered time-step field directories, e.g.
-<case_dir>/657000/T) into plain (nz, nx) numpy arrays for comparison against our own
-simulation output.
-
-Fully self-adapting to whatever case is passed in -- no slope, mesh resolution, or
-checkpoint-time constants to hand-edit when the case changes (this file has been re-edited by
-hand for three different slopes and two different mesh resolutions across one session; this
-version shouldn't need it again):
-
-  - Available checkpoint times are discovered from the case's own numbered subdirectories, not a
-    hardcoded TIMES list (adaptive timestepping means the actual output times rarely land on
-    the exact quarter-month target anyway).
-  - The mesh's cell counts (nx, nz) are read off the "top" and "downSlope" boundary patches'
-    own per-face list lengths in a reference timestep, not hardcoded.
-  - The cell-center grid (X, Z) is *not* reconstructed from a hand-transcribed blockMeshDict
-    (which silently goes stale the moment the case's slope or domain shape changes). Instead,
-    Z is recovered exactly from the solved data itself: permaFoam's own solver computes
-    `H = psi + z` every step (see the solver source, "Storage of the field of results..."),
-    so simply `Z = H - psi`, cell-for-cell, on any reference timestep. X only needs xtot plus
-    the now-adaptive nx, since none of these cases have graded/sheared x-spacing.
-  - Verified against expected_postProcessing/internal/0/volFieldValue.dat (domain-mean
-    T/thetal/thetag match to <0.1%) for the original 20%-slope case, confirming the assumed
-    OpenFOAM cell ordering (x fastest, z slowest) is correct; that ordering is a mesh-writer
-    convention, not case-specific, so it's left hardcoded.
-
-Usage (from evaluate_validation.ipynb, or any notebook in this folder):
-    from parse_permafoam_output import parse_permafoam_output
-
-    pf = parse_permafoam_output(case_dir="/usr/lib/openfoam/.../validationCase")
-    pf = parse_permafoam_output(case_dir=..., out_file="parsed_fields.pkl", xtot=10.0)
-
-Usage (from a terminal):
-    python parse_permafoam_output.py --case-dir /usr/lib/openfoam/.../validationCase \
-                                     --out parsed_fields.pkl
-"""
 import re
 import os
 import numpy as np
@@ -41,9 +5,7 @@ import pickle as pkl
 from pathlib import Path
 
 def discover_times(case_dir):
-    """Every integer-named subdirectory of case_dir is a checkpoint OpenFOAM wrote -- t=0 (the IC)
-    plus whatever real times the adaptive timestepper actually landed on for the rest, which
-    need not be round numbers (e.g. 1970907 instead of a requested 1971000)."""
+    """Every integer-named subdirectory of case_dir is a checkpoint OpenFOAM wrote."""
     times = sorted(int(d) for d in os.listdir(case_dir) if re.fullmatch(r"\d+", d))
     assert times, f"no numbered checkpoint directories found under {case_dir}"
     return times
@@ -53,7 +15,7 @@ def parse_scalar_field(path, ncells):
     """Return a flat np.ndarray of the per-cell internalField values.
 
     A field that is genuinely uniform everywhere (e.g. thetag=0 once a case has fully thawed)
-    still has a real value -- it's not missing data -- so it's broadcast to every cell rather
+    still has a real value, so it's broadcast to every cell rather
     than dropped, otherwise a comparison against a case that stays uniform at every checkpoint
     (as opposed to merely being uniform in the initial condition) would end up with the field
     absent from every timestep.
@@ -97,8 +59,8 @@ def infer_dims_and_Z(ref_path, x_patch="top", z_patch="downSlope"):
         psi_text = f.read()
     top = parse_boundary_field(psi_text, x_patch)
     downslope = parse_boundary_field(psi_text, z_patch)
-    assert top is not None, f"{ref_path}: '{x_patch}' patch has no resolved per-face list -- pick a later checkpoint"
-    assert downslope is not None, f"{ref_path}: '{z_patch}' patch has no resolved per-face list -- pick a later checkpoint"
+    assert top is not None, f"{ref_path}: '{x_patch}' patch has no resolved per-face list -> pick a later checkpoint"
+    assert downslope is not None, f"{ref_path}: '{z_patch}' patch has no resolved per-face list -> pick a later checkpoint"
     nx, nz = len(top), len(downslope)
 
     ncells = nx * nz
@@ -117,7 +79,7 @@ def build_X(nx, nz, xtot):
 
 def find_geometry_reference(case_dir, times, x_patch="top", z_patch="downSlope"):
     """Pick the latest checkpoint that has resolved (non-uniform) boundary/field data to infer
-    the mesh from -- t=0 (the IC) is often uniform/expression-only, so search from the end.
+    the mesh from t=0 (the IC) is often uniform/expression-only, so search from the end.
 
     Returns (nx, nz, Z, ref_t)."""
     for t in reversed(times):
@@ -176,7 +138,6 @@ def parse_permafoam_output(case_dir, out_file,
             if not path.is_file():
                 continue
             vals = parse_scalar_field(path, ncells)
-            # OpenFOAM single-hex-block cell ordering: x (nx) fastest, then y(=1), then z (nz) slowest
             out["fields"][t][field] = vals.reshape(nz, nx)
         if "T" in out["fields"][t]:
             out["fields"][t]["T_C"] = out["fields"][t]["T"] - 273.15

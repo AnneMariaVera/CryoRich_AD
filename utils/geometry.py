@@ -4,20 +4,10 @@ import jax
 jax.config.update('jax_enable_x64', True)
 import jax.numpy as jnp
 import utils.petrophysic as petro
-from utils.volbal import  volbal_cappillary_bundle
+from utils.volbal import  volbal
 from utils.volbal_validation import volbal_validation
 import sparsejac as sparsejac
 import interpax as ipx
-import time
-
-def timer(func):
-    @wraps(func)
-    def inner(*args, **kwargs):
-        start_time = time.time()
-        retval = func(*args, **kwargs)
-        print(f"{time.time() - start_time:.2f} seconds elapsed")
-        return retval
-    return inner
 
 class Geom():
     def __init__(self, dx, dz, x_0, x_end, z_0, z_end, slope=0.0):
@@ -56,7 +46,6 @@ class Geom():
 
         # Neighboring cells for finite volume discretization
         self.neighbors = []
-        # self.color = jnp.empty((self.nz,self.nx))
 
         for i in range(self.nz):
             for j in range(self.nx):
@@ -168,11 +157,7 @@ class Geom():
         # soil type ids are present in soil_type (built up by overlaying jnp.where per id).
         soil_ids = list(soil_type.keys())
 
-        def build_param(key, default=None):
-            # default=None means the key is required (KeyError if missing); otherwise missing
-            # keys fall back to `default` -- used for Theta_WP so soil_type dicts that predate
-            # the evapotranspiration sink (PET=0 by default in set_surface_bc, making the sink
-            # a no-op regardless of Theta_WP) keep working unchanged.
+        def build_param(key):
             get = (lambda sid: soil_type[sid][key])
             param = jnp.full(soil.shape, get(soil_ids[0]))
             for soil_id in soil_ids[1:]:
@@ -185,20 +170,11 @@ class Geom():
         self.N = build_param("N")
         self.Ksat = build_param("Ksat")
 
-    def set_cap_distribution(self, nbins=300, sigma_w = 7.27e-2):
-        """
-        Set capillary distribution parameters for the simulation.
-        nbins = number of discrete capillary pressure bins
-        """
-        self.nbins = nbins  
-        self.sigma_w = sigma_w
-        R, n_caps,dtheta, theta_steps = petro.capillary_distribution(self.alpha,self.N,self.Theta_r,self.Theta_s,sigma_w = sigma_w, rho_w = 1000, g = 9.81, nbins = 1e2)
-        self.R = R[0,0,:]
-        self.n_caps = n_caps[0,0,:]
-        self.dtheta = dtheta[0,0]
-        self.theta_steps = theta_steps[0,0,:]
-
-    def set_thermal_params(self, rho_l = 1000, rho_i = 917, rho_s = 2650, rho_a = 1.1, c_s = 800, c_l = 4180, c_i = 2100, c_a = 1000, lambda_l = 0.6, lambda_i = 2.2, lambda_s = 2.5, lambda_a = 0.023,H_f = 3.34e5):
+    def set_thermal_params(self, 
+                           rho_l = 998, rho_i = 917, rho_s = 2650, rho_a = 1.1,
+                           c_s = 725.93, c_l = 4190.38, c_i = 2066.74, c_a = 1116.44,
+                           lambda_l = 0.6, lambda_i = 2.14, lambda_s = 2.9, lambda_a = 0.0262,
+                           H_f = 3.34e5):
         """
         Set thermal parameters for the simulation.
         c_l : specific heat capacity liquid water [J/kg/K]
@@ -242,9 +218,6 @@ class Geom():
         Set parameters for the Newton-Raphson method.
         """
         print("===============   Setting Newton-Raphson parameters   =============== ")
-        print(f"Rtol: {rtol_rich,rtol_T}")
-        print(f"Max Iterations: {max_iter}")
-        print(f"Min Iterations: {min_iter}")
 
         self.rtol_rich = rtol_rich
         self.rtol_T = rtol_T
@@ -252,17 +225,18 @@ class Geom():
         self.atol_T = atol_T
         self.max_iter = max_iter
         self.min_iter = min_iter
-
         print("DONE: set Newton-Raphson parameters.")
         print("=============================================================")
 
-    def set_initial_conditions(self, htot, h_c, theta_l, theta_i, T_init=None):
+    def set_initial_conditions(self, htot, h_c, theta_l, theta_i, T_init):
         """
         Set initial conditions for the simulation.
         Parameters:
         - htot: Initial hydraulic head.
         - h_c: Initial capillary head.
-        - theta: Initial water content.
+        - theta_l: Initial water content.
+        - theta_i: Initial ice content.
+        - T_init = Initial temperature distribution.
         """
         print("===============   Setting initial conditions   =============== ")
         assert htot.shape == self.X.shape, f"htot must be of shape ({self.nz}, {self.nx})"
@@ -284,16 +258,7 @@ class Geom():
     def simulate_validation(self):
         """
         Fully coupled Richards + heat equation simulation.
-        Returns:
-            - h_total, h_c_total, theta_total: hydraulic results
-            - T_total: temperature results
-            - time_array: simulation times
-            - iter_total: NR iterations per time step
-            - normres_total: residual norm per time step
-            - res_last: residual at last step
         """
-        # number of parameters 
-        # np = int(self.nx * self.nz)
 
         # initial conditions:
         t = self.t0
@@ -326,9 +291,7 @@ class Geom():
         # predicator step initial values    
         yT = y_of_T(T)
         y_old = jnp.concatenate([htot.ravel(), yT.ravel()])
-        # y_older = y_old.copy()    
         y_new = y_old.copy()
-        # dt_old = self.dt
         
         # Coupled residual function for Newton-Raphson solver. 
         def residual_func_cap_bundle(y_new, y_old, dt, soil, soil_type, Theta_s,Theta_r, alpha, N, Ksat, H_f, 
@@ -389,13 +352,10 @@ class Geom():
             dt = self.dt
             # Adaptive time stepping loop
             while repeat:
-                # dt actually used for this Newton solve (dt may still grow below, but that
-                # only takes effect for the *next* step, not the one just solved)
-                dt_solved = dt
-                # predictor step for T using previous two time steps (for better convergence of coupled system)
                 # Call coupled Newton-Raphson
                 y_trial, iter_count, norm_rich, norm_T, converged = self.newtonRaphson_cap_bundle(y_old, y_old, t, dt, residual_func_cap_bundle, jacobian_func, self.atol_rich, self.rtol_rich, self.atol_T, self.rtol_T, self.max_iter)
                 normres = jnp.sqrt(norm_rich**2 + norm_T**2)
+                dt_solved = dt
 
                 # Adaptive time step control
                 if (iter_count >= self.max_iter and not converged) or jnp.isnan(norm_rich) or jnp.isnan(norm_T) or jnp.isinf(norm_rich) or jnp.isinf(norm_T):
@@ -425,14 +385,8 @@ class Geom():
                     cons_success = 0
                     repeat = False
             
-            try:
-                print(f"Time {t/24/3600:.2f} d, dt={dt_solved:.2e}, NR iterations={iter_count}, ||res||_inf={normres:.3e}")
-            except TypeError:
-                # normres can be a JVPTracer/JaxprTracer when simulate_cap_bundle is run
-                # under jax.jvp/grad (e.g. for parameter sensitivity analysis); its value
-                # can't be formatted with :.3e in that case, so just drop it from the line.
-                print(f"Time {t/24/3600:.2f} d, dt={dt_solved:.2e}, NR iterations={iter_count}")
-
+            print(f"Time {t/24/3600:.2f} d, dt={dt_solved:.2e}, NR iterations={iter_count}, ||res||_inf={normres:.3e}")
+            
             # Extract updated htot and T
             y_new = y_trial
             y_old = y_new.copy()
@@ -474,7 +428,7 @@ class Geom():
         return h_total, h_c_total, theta_l_total,theta_i_total, T_total, q_runoff_array, qx_array,qz_array,qx_centered_array,qz_centered_array, time_array, iter_total, normres_total
 
 
-    def simulate_cap_bundle(self):
+    def simulate(self):
         """
         Fully coupled Richards + heat equation simulation.
         Returns:
@@ -485,8 +439,6 @@ class Geom():
             - normres_total: residual norm per time step
             - res_last: residual at last step
         """
-        # number of parameters 
-        # np = int(self.nx * self.nz)
 
         # initial conditions:
         t = self.t0
@@ -519,9 +471,7 @@ class Geom():
         # predicator step initial values    
         yT = y_of_T(T)
         y_old = jnp.concatenate([htot.ravel(), yT.ravel()])
-        # y_older = y_old.copy()    
         y_new = y_old.copy()
-        # dt_old = self.dt
         
         # Coupled residual function for Newton-Raphson solver. 
         def residual_func_cap_bundle(y_new, y_old, dt, soil, soil_type, Theta_s,Theta_r, alpha, N, Ksat, H_f, 
@@ -545,7 +495,7 @@ class Geom():
             T_old = T_of_y(yT_old)
 
             # Head and Heat residual (advection uses fluxes from h) 
-            res_total, _, _, _, _, _, _, _ = volbal_cappillary_bundle(
+            res_total, _, _, _, _, _, _, _ = volbal(
                     T_new, T_old, htot_new, htot_old, q_inf, T_surface, 
                     dt, soil, soil_type, Theta_s,Theta_r, alpha, N, Ksat, H_f, 
                     rho_i, rho_l, rho_a, rho_s, 
@@ -562,7 +512,7 @@ class Geom():
         )
 
         # save initial fluxes
-        _, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_s, theta_i_s = volbal_cappillary_bundle(T, T, htot, htot, self.q_inf_interp(t)*jnp.ones((self.nx,)), self.T_surface_interp(t)*jnp.ones((self.nx,)), 
+        _, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_s, theta_i_s = volbal(T, T, htot, htot, self.q_inf_interp(t)*jnp.ones((self.nx,)), self.T_surface_interp(t)*jnp.ones((self.nx,)), 
                                                                                                        self.dt, self.soil, self.soil_type, self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat, self.H_f, 
                                                                                                        self.rho_i, self.rho_l, self.rho_a, self.rho_s, 
                                                                                                        self.c_i, self.c_l, self.c_a, self.c_s,
@@ -582,14 +532,12 @@ class Geom():
             dt = self.dt
             # Adaptive time stepping loop
             while repeat:
-                # dt actually used for this Newton solve (dt may still grow below, but that
-                # only takes effect for the *next* step, not the one just solved)
-                dt_solved = dt
                 # predictor step for T using previous two time steps (for better convergence of coupled system)
                 # Call coupled Newton-Raphson
                 y_trial, iter_count, norm_rich, norm_T, converged = self.newtonRaphson_cap_bundle(y_old, y_old, t, dt, residual_func_cap_bundle, jacobian_func, self.atol_rich, self.rtol_rich, self.atol_T, self.rtol_T, self.max_iter)
                 normres = jnp.sqrt(norm_rich**2 + norm_T**2)
-
+                dt_solved = dt
+                
                 # Adaptive time step control
                 if (iter_count >= self.max_iter and not converged) or jnp.isnan(norm_rich) or jnp.isnan(norm_T) or jnp.isinf(norm_rich) or jnp.isinf(norm_T):
                     dt /= 2
@@ -618,14 +566,8 @@ class Geom():
                     cons_success = 0
                     repeat = False
             
-            try:
-                print(f"Time {t/24/3600:.2f} d, dt={dt_solved:.2e}, NR iterations={iter_count}, ||res||_inf={normres:.3e}")
-            except TypeError:
-                # normres can be a JVPTracer/JaxprTracer when simulate_cap_bundle is run
-                # under jax.jvp/grad (e.g. for parameter sensitivity analysis); its value
-                # can't be formatted with :.3e in that case, so just drop it from the line.
-                print(f"Time {t/24/3600:.2f} d, dt={dt_solved:.2e}, NR iterations={iter_count}")
-
+            print(f"Time {t/24/3600:.2f} d, dt={dt_solved:.2e}, NR iterations={iter_count}, ||res||_inf={normres:.3e}")
+            
             # Extract updated htot and T
             y_new = y_trial
             y_old = y_new.copy()
@@ -642,7 +584,7 @@ class Geom():
                 T_old = T_of_y(jnp.reshape(y_old[self.np:], (self.nz, self.nx)))
                 htot_old = jnp.reshape(y_old[:self.np], (self.nz, self.nx))
                                                                                                                 
-                _, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_s, theta_i_s = volbal_cappillary_bundle(T_new, T_old,
+                _, q_runoff, qx, qz, qx_centered, qz_centered, theta_l_s, theta_i_s = volbal(T_new, T_old,
                                                                                                                htot_new, htot_old, self.q_inf_interp(t)*jnp.ones((self.nx,)), self.T_surface_interp(t)*jnp.ones((self.nx,)), dt_solved,
                                                                                                                self.soil, self.soil_type, self.Theta_s,self.Theta_r, self.alpha, self.N, self.Ksat, self.H_f,
                                                                                                                self.rho_i, self.rho_l, self.rho_a, self.rho_s,
@@ -671,7 +613,7 @@ class Geom():
         Newton-Raphson solver for coupled [htot, T].
         A component is accepted once its residual is either below the tolerance
         in absolute terms or has shrunk by the required relative factor since
-        the first iterate -- a purely relative test is ill-posed whenever the
+        the first iterate, a purely relative test is ill-posed whenever the
         residual at y0 is already small (e.g., a near-equilibrium step), since
         no further relative reduction may be achievable even though the state
         has, in practice, converged.
@@ -688,9 +630,7 @@ class Geom():
         converged = is_converged(norm_rich, norm_rich0, atol_rich, rtol_rich) and is_converged(norm_T, norm_T0, atol_T, rtol_T)
         return y_new, iter_count, norm_rich, norm_T, converged
 
-    def body_fun_cap_bundle(
-        self, y_new, y_old, t, dt,
-        residual_func, jacobian_func):
+    def body_fun_cap_bundle(self, y_new, y_old, t, dt, residual_func, jacobian_func):
 
         res = residual_func(
             y_new, y_old, dt, self.soil, self.soil_type,
