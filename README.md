@@ -21,7 +21,7 @@ Repository structure
 - `figures/` - contains all published figures (except the overview figure created with Affinity Designer).
 - `input/` - all input data of the simulations:
   - `era5_land_data/` - notebooks to download the ERA5-Land data and to derive the forcing (temperature and q_inf) for the spinup and the ERA5-Land simulations, stored under `Sweden/`.
-  - `idealized/` - `create_idealized_data.ipynb` creates the idealized forcing (tanh freeze-thaw ramp of the surface temperature and constant q_inf) and saves it as `idealized_forcing.pkl`.
+  - `idealized/` - `create_idealized_data.ipynb` creates the idealized forcing and saves it as `idealized_forcing.pkl`.
   - `interpolation/` - interpolations are saved here as pickle files (due to their large size, they cannot be pushed to GitHub; use `notebooks/creating_figures/02compare_param.ipynb` to recreate them).
 - `notebooks/` - all Jupyter notebooks are stored here:
   - `creating_figures/` - contains the notebooks used for creating the figures stored under `figures/` (including the supplementary figure) and the animation stored under `docu/Figures/`.
@@ -44,7 +44,7 @@ Repository structure
 Quick start
 -----------
 
-Create a Conda environment from the provided `environment.yml` file (recommended):
+To run the notebooks, we recommend to create a Conda environment from the provided `environment.yml` file:
 
 ```bash
 # from the repository root
@@ -73,14 +73,14 @@ Steps to reproduce
 
 To rerun the simulations of the publication, run the notebooks in the following order (`<param>` stands for one of the five parameterizations):
 
-0. Forcing:
-   - ERA5-Land forcing *(optional, the forcings are already included under `input/era5_land_data/Sweden/` named `sim_2312_2405.pkl` and `spinup_2308_2311.pkl`)*:
+0. Forcings *(optional, the forcings are already included under `input/era5_land_data/Sweden/` and `input/idealized/`)*:
+   - ERA5-Land forcing:
      - `input/era5_land_data/download_data.ipynb` downloads ERA5-Land data ([doi:10.24381/cds.e2161bac](https://doi.org/10.24381/cds.e2161bac)). Requests are only possible per month, so the notebook is run once per month by changing `year` and `month`. Two requests are needed per month:
        - skin temperature, snowfall, snowmelt, evaporation from bare soil and total precipitation → saved as `YY_MM.nc`
        - skin temperature, 2 m temperature and soil temperature level 1 → saved as `T_YY_MM.nc`
      - The download assigns a random file name to each download. The files were renamed by hand to the scheme above (e.g. `23_05.nc`, `T_23_05.nc`) and moved to `input/era5_land_data/Sweden/`.
      - `input/era5_land_data/creat_sim_data.ipynb` → `input/era5_land_data/Sweden/spinup_2308_2311.pkl` and `sim_2312_2405.pkl`
-   - Idealized forcing *(required, the file is not included in the repository)*:
+   - Idealized forcing:
      - `input/idealized/create_idealized_data.ipynb` → `input/idealized/idealized_forcing.pkl`
 1. Interpolation of the hydraulic parameters:
    - `notebooks/creating_figures/02compare_param.ipynb` → `input/interpolation/interpolation_<param>.pkl` (set `param` in the notebook), also creates `figures/theory/`
