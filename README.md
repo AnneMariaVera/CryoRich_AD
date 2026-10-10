@@ -19,13 +19,16 @@ Repository structure
 --------------------
 
 - `figures/` - contains all published figures (except the overview figure created with Affinity Designer).
-- `input/` - interpolations are saved here as pickle files (due to their large size, they cannot be pushed to GitHub; use `notebooks/creating_figures/compare_param.ipynb` to recreate them), along with the ERA5-Land derived forcing containing temperature and q_inf data.
+- `input/` - all input data of the simulations:
+  - `era5_land_data/` - notebooks to download the ERA5-Land data and to derive the forcing (temperature and q_inf) for the spinup and the ERA5-Land simulations, stored under `Sweden/`.
+  - `idealized/` - `create_idealized_data.ipynb` creates the idealized forcing (tanh freeze-thaw ramp of the surface temperature and constant q_inf) and saves it as `idealized_forcing.pkl`.
+  - `interpolation/` - interpolations are saved here as pickle files (due to their large size, they cannot be pushed to GitHub; use `notebooks/creating_figures/02compare_param.ipynb` to recreate them).
 - `notebooks/` - all Jupyter notebooks are stored here:
-  - `creating_figures/` - contains the notebooks used for creating the figures stored under `figures/`.
+  - `creating_figures/` - contains the notebooks used for creating the figures stored under `figures/` (including the supplementary figure) and the animation stored under `docu/Figures/`.
   - `idealized/` - contains 5 notebooks (one for each parameterization) that were used to create the idealized simulations.
   - `simulation/` - contains 5 notebooks (one for each parameterization) that were used to create the ERA5-Land simulations.
   - `spinup/` - contains 5 notebooks (one for each parameterization) that were used to create the spinup simulations.
-  - `supplementary/` - contains two notebooks: one for running the synthetic case simulated for the supplementary material, and one for creating the figure and calculating the mass balance.
+  - `supplementary/` - contains the notebook for running the synthetic case simulated for the supplementary material.
 - `utils/` - Python package with helper modules (If you modify modules under `utils/`, make sure to restart the notebook kernel):
   - `geometry.py` - main file containing the definition of the `Geom()` class used for simulations.
   - `parameter_interpolation.py` - interpolation of hydraulic parameterizations along temperature and capillary head.
@@ -70,26 +73,32 @@ Steps to reproduce
 
 To rerun the simulations of the publication, run the notebooks in the following order (`<param>` stands for one of the five parameterizations):
 
-0. ERA5-Land forcing *(optional, the forcings are already included under `input/era5_land_data/Sweden/` named `sim_2312_2405.pkl` and `spinup_2308_2311.pkl`)*:
-   - `input/era5_land_data/download_data.ipynb` downloads ERA5-Land data ([doi:10.24381/cds.e2161bac](https://doi.org/10.24381/cds.e2161bac)). Requests are only possible per month, so the notebook is run once per month by changing `year` and `month`. Two requests are needed per month:
-     - skin temperature, snowfall, snowmelt, evaporation from bare soil and total precipitation → saved as `YY_MM.nc`
-     - skin temperature, 2 m temperature and soil temperature level 1 → saved as `T_YY_MM.nc`
-   - The download assigns a random file name to each download. The files were renamed by hand to the scheme above (e.g. `23_05.nc`, `T_23_05.nc`) and moved to `input/era5_land_data/Sweden/`.
-   - `input/era5_land_data/creat_sim_data.ipynb` → `input/era5_land_data/Sweden/spinup_2308_2311.pkl` and `sim_2312_2405.pkl`
+0. Forcing:
+   - ERA5-Land forcing *(optional, the forcings are already included under `input/era5_land_data/Sweden/` named `sim_2312_2405.pkl` and `spinup_2308_2311.pkl`)*:
+     - `input/era5_land_data/download_data.ipynb` downloads ERA5-Land data ([doi:10.24381/cds.e2161bac](https://doi.org/10.24381/cds.e2161bac)). Requests are only possible per month, so the notebook is run once per month by changing `year` and `month`. Two requests are needed per month:
+       - skin temperature, snowfall, snowmelt, evaporation from bare soil and total precipitation → saved as `YY_MM.nc`
+       - skin temperature, 2 m temperature and soil temperature level 1 → saved as `T_YY_MM.nc`
+     - The download assigns a random file name to each download. The files were renamed by hand to the scheme above (e.g. `23_05.nc`, `T_23_05.nc`) and moved to `input/era5_land_data/Sweden/`.
+     - `input/era5_land_data/creat_sim_data.ipynb` → `input/era5_land_data/Sweden/spinup_2308_2311.pkl` and `sim_2312_2405.pkl`
+   - Idealized forcing *(required, the file is not included in the repository)*:
+     - `input/idealized/create_idealized_data.ipynb` → `input/idealized/idealized_forcing.pkl`
 1. Interpolation of the hydraulic parameters:
-   - `notebooks/creating_figures/compare_param.ipynb` → `input/interpolation/interpolation_<param>.pkl`
+   - `notebooks/creating_figures/02compare_param.ipynb` → `input/interpolation/interpolation_<param>.pkl` (set `param` in the notebook), also creates `figures/theory/`
    - ~9 GB per file, ~47 GB in total
 2. Spinup:
-   - `notebooks/spinup/0Spinup_<param>.ipynb` → `output/spinup/`
+   - `notebooks/spinup/0Spinup_<param>.ipynb` → `output/spinup/spinup_<param>.pkl`
    - the spinup output is used as the initial condition for both the ERA5 and the idealized simulations
 3. Simulations:
-   - `notebooks/simulation/1Simulate_<param>.ipynb` → `output/simulation/`
-   - `notebooks/idealized/Idealized_<param>.ipynb` → `output/idealized/`
-4. Figures:
-   - `notebooks/creating_figures/visualize_results.ipynb` → `figures/`
+   - `notebooks/simulation/1Simulate_<param>.ipynb` → `output/simulation/simulation_<param>.pkl`
+   - `notebooks/idealized/Idealized_<param>.ipynb` (reads `input/idealized/idealized_forcing.pkl`) → `output/idealized/<param>.pkl`
+4. Figures (`notebooks/creating_figures/`):
+   - `03domain_plot.ipynb` → `figures/method/domain.png`
+   - `04forcing_plot.ipynb` → `figures/method/spin_sim_ideal.png` (forcing of the spinup, ERA5-Land and idealized simulations)
+   - `06visualize_results.ipynb` → `figures/results/idealized/` and `figures/results/simulation/`
+   - `create_animation.ipynb` → `docu/Figures/<param>.gif`
 5. Supplementary material:
    - `notebooks/supplementary/synthetic_case.ipynb` → `output/supplementary/`
-   - `notebooks/supplementary/create_supplementary_plots.ipynb` → `figures/supplementary/`
+   - `notebooks/creating_figures/S1_create_supplementary_plots.ipynb` → `figures/supplementary/comparison_permaFoam.png`
    - the synthetic case is compared to a permaFoam simulation conducted in OpenFOAM, whose case folder is stored under `output/supplementary/permaFoam/`
 
 Documentation
