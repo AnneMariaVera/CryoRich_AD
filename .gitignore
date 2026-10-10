@@ -11,3 +11,4 @@ docu/Theory_Guide/.DS_Store
 *.pdf
 *.pkl
 !input/era5_land_data/Sweden/*.pkl
+!input/idealized/*pkl
