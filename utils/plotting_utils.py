@@ -10,18 +10,77 @@ from scipy.integrate import cumulative_trapezoid
 import cmocean.cm as cmo
 import matplotlib.dates as mdates
 from matplotlib.colors import ListedColormap
+from matplotlib.patches import ConnectionPatch
 from datetime import timedelta
 import jax.numpy as jnp
 
 
 # Plotting settings
-cobalt=(0.0, 0.28, 0.67)
-persian_red = (0.8,0.2,0.2)
-carolina_blue = (0.6,0.73,0.89)
-red=(255/255,193/255,7/255)
-orange = (216/255,27/255,96/255)
-green = (30/255, 136/255, 229/255)
-blue = (0, 77/255, 46/255)
+# Colour-blind safe palette, shared by all figures.
+OI_BLUE = "#0072B2"
+OI_SKY_BLUE = "#56B4E9"
+OI_VERMILLION = "#D55E00"
+OI_ORANGE = "#E69F00"
+OI_GREEN = "#009E73"
+GREY = "0.4"
+
+# Font sizes [pt]: one size for everything, titles one step up, insets one step down.
+FONT_SIZE = 8
+TITLE_FONTSIZE = 9
+SMALL_FONTSIZE = 7
+
+# line widths [pt]
+LINEWIDTH = 1.5          # data lines
+LINEWIDTH_THIN = 1.0     # inset data lines, reference lines, domain outlines
+SPINE_OFFSET = 5         # outward shift of the left spine [pt]
+
+plt.rcParams.update({
+    "font.size": FONT_SIZE,
+    "axes.titlesize": TITLE_FONTSIZE,
+    "axes.labelsize": FONT_SIZE,
+    "xtick.labelsize": FONT_SIZE,
+    "ytick.labelsize": FONT_SIZE,
+    "legend.fontsize": FONT_SIZE,
+    "figure.titlesize": TITLE_FONTSIZE,
+    "axes.formatter.use_mathtext": True,   # "x10^-6" instead of "1e-6"
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.linewidth": 0.8,
+    "axes.prop_cycle": matplotlib.cycler(color=[OI_BLUE, OI_VERMILLION, OI_GREEN, OI_ORANGE,
+                                                OI_SKY_BLUE]),
+    "lines.linewidth": LINEWIDTH,
+    "legend.frameon": False,
+    "savefig.dpi": 1000,
+    "savefig.bbox": "tight",
+    "savefig.pad_inches": 0.02,
+})
+
+
+def style_axes(ax, offset=SPINE_OFFSET):
+    """Common 2D axis style: no top/right spine, left spine shifted outward."""
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.spines['left'].set_position(('outward', offset))
+
+
+def panel_title(ax, text):
+    """Bold, left-aligned panel title, e.g. '(A) drying assumption'."""
+    ax.set_title(text, loc="left", fontsize=TITLE_FONTSIZE, fontweight="bold")
+
+
+def time_label(ax, time_days):
+    """'t = .. days' annotation in the upper right corner of `ax`."""
+    ax.text(0.98, 0.97, f"$t$ = {time_days:.0f} days", transform=ax.transAxes,
+            ha="right", va="top", fontsize=FONT_SIZE,
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, pad=2))
+
+
+def shared_legend(fig, ax, **kwargs):
+    """Figure-wide legend for the parametrisation lines of `ax` (2 columns, so the
+    longest label still fits in one text width)."""
+    handles, labels = ax.get_legend_handles_labels()
+    return fig.legend(handles, labels, ncol=min(len(labels), 2), frameon=False,
+                      handlelength=3, columnspacing=1.5, **kwargs)
+
 
 N = 256
 start = np.array([168, 148, 125]) / 255
@@ -33,30 +92,24 @@ vals[:, :3] = (1 - t)[:, None] * start + t[:, None] * end
 icy_soil = ListedColormap(vals)
 
 cm = 1/2.54  # centimeters in inches
-plt.rcParams['font.size'] = 8
 
 PAGE_WIDTH_CM = 16.46   
 PAGE_HEIGHT_CM = 22.41 
 
 parametrisation_STYLE = {
-    "drying":             {"color": "#0072B2", "linestyle": "-"},        # blue
-    "drying_omega10":     {"color": "#56B4E9", "linestyle": "--"},       # sky blue
-    "imp10":              {"color": "#D55E00", "linestyle": "-."},       # vermillion
-    "imp50":              {"color": "#E69F00", "linestyle": ":"},        # orange
-    "cap":                {"color": "#009E73", "linestyle": (0, (3, 1, 1, 1))},  # bluish green
+    "drying":             {"color": OI_BLUE,       "linestyle": "-"},
+    "drying_omega10":     {"color": OI_SKY_BLUE,   "linestyle": "--"},
+    "imp10":              {"color": OI_VERMILLION, "linestyle": "-."},
+    "imp50":              {"color": OI_ORANGE,     "linestyle": ":"},
+    "cap":                {"color": OI_GREEN,      "linestyle": (0, (3, 1, 1, 1))},
 }
 
 def parametrisation_style(parametrisation):
     return parametrisation_STYLE.get(parametrisation, {"color": "black", "linestyle": "-"})
 
 def parametrisation_label(parametrisation):
-    return {
-        "drying": "(A) drying assumption",
-        "imp10": r"(B) imp. factor, $\Omega=10$",
-        "imp50": r"(C) imp. factor, $\Omega=50$",
-        "cap": "(D) capillary bundle model",
-        "drying_omega10": r"(E) drying assumption, with imp. factor $\Omega=10$",
-    }.get(parametrisation)
+    # same lettering in every figure (theory surfaces, legends, panel titles)
+    return parametrisation_label_leg(parametrisation)
 
 def parametrisation_label_leg(parametrisation):
     return {
@@ -84,39 +137,38 @@ def plot_sparsity_pattern(geom):
 
 def plot_domain(X, Z, cellValues, colormap="Blues", title=" ", colorbar_label=None):
     """Plot cell values over the geometry."""
-    fig, ax = plt.subplots(1,2,figsize=(19*cm, 7*cm), gridspec_kw={'width_ratios': [1, 0.4]})
+    fig, ax = plt.subplots(1,2,figsize=(PAGE_WIDTH_CM*cm, 7*cm), gridspec_kw={'width_ratios': [1, 0.4]})
     ax[1].set_aspect('equal')
     cbar = ax[0].pcolormesh(X, Z, cellValues, cmap=colormap,shading = "gouraud", linewidth=0.05)
-    ax[0].plot(X[-1,:],Z[-1,:],"-", color = "#D55E00", linewidth = 2,zorder=1000)
+    ax[0].plot(X[-1,:],Z[-1,:],"-", color = OI_VERMILLION, linewidth = 2,zorder=1000)
 
-    ax[0].plot(X[:,0],Z[:,0],"-", color = "#56B4E9",linewidth = 2, zorder=1004)
-    ax[0].plot(X[:, -1], Z[:, -1], "-", color = "#009E73",linewidth = 2, zorder=1004)
-    ax[0].plot(X[0,:], Z[0,:], "-", color = "#56B4E9", linewidth = 2, zorder=1006)
-    ax[0].plot(X[-1,:],-.25-0.1*X[-1,:],"-k",zorder=1002) 
-    ax[0].plot(X[-1,:],-.5-0.1*X[-1,:],"-k",zorder=1000)
+    ax[0].plot(X[:,0],Z[:,0],"-", color = OI_SKY_BLUE,linewidth = 2, zorder=1004)
+    ax[0].plot(X[:, -1], Z[:, -1], "-", color = OI_GREEN,linewidth = 2, zorder=1004)
+    ax[0].plot(X[0,:], Z[0,:], "-", color = OI_SKY_BLUE, linewidth = 2, zorder=1006)
+    ax[0].plot(X[-1,:],-.25-0.1*X[-1,:],"-k",linewidth=LINEWIDTH_THIN,zorder=1002)
+    ax[0].plot(X[-1,:],-.5-0.1*X[-1,:],"-k",linewidth=LINEWIDTH_THIN,zorder=1000)
 
 
-    ax[0].spines[['top','right']].set_visible(False)
-    ax[0].set_xlabel("x [m]")
-    ax[0].set_ylabel("z [m]")
+    style_axes(ax[0])
+    ax[0].set_xlabel("$x$ [m]")
+    ax[0].set_ylabel("$z$ [m]")
     eps = 0.1
     ax[0].set_xlim(X.min()-eps, X.max()+eps)
     ax[0].set_ylim(Z.min()-eps, Z.max()+eps)
 
-    ax[0].spines['left'].set_position(('outward', 10))
     if title is not None:
         ax[0].title.set_text(title)
 
     x = np.array([0-0.001,.025+0.001])
     y_l = -0.1*x
     y_u = -0.1*x+.025
-    ax[1].plot(0.0125,0.0125,"o",color=persian_red,markersize=9,zorder=1001)
-    ax[1].text(0.0125,0.01,r"primary var.", color=persian_red, zorder=1001, va="top", ha="center")
-    ax[1].plot(x,y_l,"-k",zorder=1001)
-    ax[1].plot(np.array([0,0.025]),np.array([0,0]),"--k",zorder=1001)
-    ax[1].plot(x,y_u,"-k",zorder=1001)
-    ax[1].vlines(x=0,ymax=0.025+0.001,ymin=-0.001, color="k", zorder=1002)
-    ax[1].vlines(x=0.025,ymax=y_u[-1]+0.001,ymin=y_l[-1]-0.001, color="k", zorder=1003)
+    ax[1].plot(0.0125,0.0125,"o",color='k',markersize=7,zorder=1001)
+    ax[1].text(0.0125,0.01,r"primary var.", color='k', zorder=1001, va="top", ha="center")
+    ax[1].plot(x,y_l,"-k",linewidth=LINEWIDTH_THIN,zorder=1001)
+    ax[1].plot(np.array([0,0.025]),np.array([0,0]),"--k",linewidth=LINEWIDTH_THIN,zorder=1001)
+    ax[1].plot(x,y_u,"-k",linewidth=LINEWIDTH_THIN,zorder=1001)
+    ax[1].vlines(x=0,ymax=0.025+0.001,ymin=-0.001, color="k", linewidth=LINEWIDTH_THIN, zorder=1002)
+    ax[1].vlines(x=0.025,ymax=y_u[-1]+0.001,ymin=y_l[-1]-0.001, color="k", linewidth=LINEWIDTH_THIN, zorder=1003)
     ax[1].text(-0.005,0.0125,r"$\Delta z$", color="k")
     ax[1].text(0.0125,0.0005,r"$\Delta x$", color="k")
     ax[1].text(0.0125,0.025,r"$\overline{\Delta x}$", color="k")
@@ -133,14 +185,13 @@ def plot_cellValues(X, Z, cellValues, colormap="Blues", title=" ", colorbar_labe
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="2.5%", pad=0.05)
     fig.colorbar(cbar, cax=cax, label=colorbar_label)
-    ax.spines[['top','right']].set_visible(False)
-    ax.set_xlabel("x [m]")
-    ax.set_ylabel("z [m]")
+    style_axes(ax)
+    ax.set_xlabel("$x$ [m]")
+    ax.set_ylabel("$z$ [m]")
     eps = 0.1
     ax.set_xlim(X.min()-eps, X.max()+eps)
     ax.set_ylim(Z.min()-eps, Z.max()+eps)
 
-    ax.spines['left'].set_position(('outward', 10))
     if title is not None:
         ax.title.set_text(title)
     fig.tight_layout()
@@ -207,22 +258,20 @@ def plot_flux_comparison(dbs, parametrisations=None, quantity="top", cumulative=
     for parametrisation in parametrisations:
         series = exit_fluxes(dbs[parametrisation], cumulative=cumulative, relative=relative)
         style = parametrisation_style(parametrisation)
-        ax.plot(series[0], series[quantity_index], linewidth=2,
+        ax.plot(series[0], series[quantity_index], linewidth=LINEWIDTH,
                label=parametrisation_label_leg(parametrisation) or parametrisation,
                color=style["color"], linestyle=style["linestyle"])
 
-    ax.spines[['top', 'right']].set_visible(False)
-    ax.spines['left'].set_position(('data', 0))
-    ax.spines['bottom'].set_position(('data', 0))
+    style_axes(ax)
     ax.set_xlabel(r"time [days]")
     if cumulative:
-        ax.set_ylabel(r"V/V$_{tot}$ [-]" if relative else r"V [m$^2$]")
+        ax.set_ylabel(r"$V/V_\mathrm{tot}$ [-]" if relative else r"$V$ [m$^2$]")
     else:
-        ax.set_ylabel(r"q/q$_{tot}$ [-]" if relative else r"q [m$^2$/s]")
+        ax.set_ylabel(r"$q/q_\mathrm{tot}$ [-]" if relative else r"$q$ [m$^2$/s]")
     ax.set_ylim(ylim)
     ax.set_title(title or "")
     if legend:
-        ax.legend(loc="best", facecolor='none', edgecolor='none')
+        ax.legend(loc="best")
     if standalone:
         fig.tight_layout()
     return fig, ax
@@ -244,20 +293,19 @@ def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False
               "bottom": "groundwater discharge"}
 
     if figsize is None:
-        figsize = (PAGE_WIDTH_CM*cm)
+        figsize = (PAGE_WIDTH_CM*cm, 7*cm)
     fig, axes = plt.subplots(1, len(quantities), figsize=figsize)
 
     for ax, quantity in zip(axes, quantities):
         plot_flux_comparison(dbs, parametrisations, quantity=quantity, relative=relative,
                              title=titles[quantity], fig=fig, ax=ax)
+        if ax is not axes[0]:
+            ax.set_ylabel("")
     fig.tight_layout()
     if legend:
         labels_margin = fig.subplotpars.bottom
 
-        handles, labels = axes[0].get_legend_handles_labels()
-        ncol = min(len(labels), 3)
-        leg = fig.legend(handles, labels, loc="lower center", ncol=ncol,
-                         facecolor='none', edgecolor='none', bbox_to_anchor=(0.5, 0))
+        leg = shared_legend(fig, axes[0], loc="lower center", bbox_to_anchor=(0.5, 0))
         # Anchored to the figure bottom, so its rendered height (measured after a
         # draw) tells us exactly how much extra room to reserve -- no guessed margin.
         fig.canvas.draw()
@@ -302,11 +350,11 @@ def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoo
     for ax, quantity in zip(axes, titles):
         for p in parametrisations:
             style = parametrisation_style(p)
-            ax.plot(series[p]["t"], series[p][quantity], linewidth=2, color=style["color"],
+            ax.plot(series[p]["t"], series[p][quantity], linewidth=LINEWIDTH, color=style["color"],
                     linestyle=style["linestyle"], label=parametrisation_label_leg(p) or p)
         ax.set_xlabel("time [days]")
         ax.set_title(titles[quantity])
-        ax.spines[['top', 'right']].set_visible(False)
+        style_axes(ax)
 
         if quantity not in inset_quantities:
             continue
@@ -318,27 +366,26 @@ def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoo
                            loc="upper left", borderpad=0)
         for p in parametrisations:
             style = parametrisation_style(p)
-            axins.plot(series[p]["t"], series[p][quantity], linewidth=1.4,
+            axins.plot(series[p]["t"], series[p][quantity], linewidth=LINEWIDTH_THIN,
                        color=style["color"], linestyle=style["linestyle"])
         axins.set_xlim(0, zoom_end)
         axins.set_ylim(0, zoom_max * 1.15)
-        axins.tick_params(labelsize=6.5)
+        axins.tick_params(labelsize=SMALL_FONTSIZE)
         axins.set_facecolor("white")
         for spine in axins.spines.values():
-            spine.set_edgecolor("0.4")
+            spine.set_visible(True)
+            spine.set_edgecolor(GREY)
             spine.set_linewidth(0.8)
-        mark_inset(ax, axins, loc1=2, loc2=1, fc="none", ec="0.5", linewidth=0.7)
+        mark_inset(ax, axins, loc1=2, loc2=1, fc="none", ec=GREY, linewidth=0.8)
         insets.append(axins)
-    axes[0].set_ylabel(r"V [m$^2$]")
+    axes[0].set_ylabel(r"$V$ [m$^2$]")
 
     fig.tight_layout()
     if legend:
         # Anchored to the figure bottom, so its rendered height (measured after a
         # draw) tells us exactly how much extra room to reserve -- no guessed margin.
         labels_margin = fig.subplotpars.bottom
-        handles, labels = axes[0].get_legend_handles_labels()
-        leg = fig.legend(handles, labels, loc="lower center", ncol=min(len(labels), 3),
-                         facecolor='none', edgecolor='none', bbox_to_anchor=(0.5, 0))
+        leg = shared_legend(fig, axes[0], loc="lower center", bbox_to_anchor=(0.5, 0))
         fig.canvas.draw()
         legend_height = leg.get_window_extent(fig.canvas.get_renderer()) \
                            .transformed(fig.transFigure.inverted()).height
@@ -347,7 +394,7 @@ def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoo
     return fig, (tuple(axes), tuple(insets))
 
 def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap=icy_soil,
-                     title=" ", xlabel="x [m]", ylabel="z [m]",
+                     title=" ", xlabel="$x$ [m]", ylabel="$z$ [m]",
                      density=5.0, color="k", linewidth=1.0, arrowsize=0,
                      start_points=None, n_seeds=20, n_seeds_base=5, minlength=0.02,
                      fig=None, ax=None, cax=None):
@@ -413,8 +460,7 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap=icy_soil,
     # ax.set_aspect('equal')
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.spines[['top', 'right']].set_visible(False)
-    ax.spines['left'].set_position(('outward', 10))
+    style_axes(ax)
 
     # scalar field of ice content as background
 
@@ -463,10 +509,10 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap=icy_soil,
     )
 
     # Draw boundary
-    ax.plot([X[0,0],X[0,-1]],[Z[0,0],Z[0,-1]],"-k")
-    ax.plot([X[-1,0],X[0,0]],[Z[-1,0],Z[0,0]],"-k")
-    ax.plot([X[-1,0],X[-1,-1]],[Z[-1,0],Z[-1,-1]],"-k")
-    ax.plot([X[0,-1],X[-1,-1]],[Z[0,-1],Z[-1,-1]],"-k")
+    ax.plot([X[0,0],X[0,-1]],[Z[0,0],Z[0,-1]],"-k",linewidth=LINEWIDTH_THIN)
+    ax.plot([X[-1,0],X[0,0]],[Z[-1,0],Z[0,0]],"-k",linewidth=LINEWIDTH_THIN)
+    ax.plot([X[-1,0],X[-1,-1]],[Z[-1,0],Z[-1,-1]],"-k",linewidth=LINEWIDTH_THIN)
+    ax.plot([X[0,-1],X[-1,-1]],[Z[0,-1],Z[-1,-1]],"-k",linewidth=LINEWIDTH_THIN)
 
     ax.set_title(title)
     if standalone:
@@ -487,9 +533,9 @@ def plot_streamlines_grid(dbs, index, parametrisations=None, slope=-0.1, field_k
     if parametrisations is None:
         parametrisations = list(dbs.keys())
     if title_fontsize is None:
-        title_fontsize = 10
+        title_fontsize = TITLE_FONTSIZE
     if annotation_fontsize is None:
-        annotation_fontsize = 8
+        annotation_fontsize = FONT_SIZE
 
     n_param = len(parametrisations)
     quantities = {"surf": "surface runoff", "top": "interflow", "bottom": "groundwater discharge"}
@@ -522,26 +568,11 @@ def plot_streamlines_grid(dbs, index, parametrisations=None, slope=-0.1, field_k
             ax = fig.add_subplot(gs[0, col])
             plot_flux_comparison(dbs, parametrisations, quantity=quantity, relative=relative,
                                  title=quantities[quantity], fig=fig, ax=ax)
-            ax.axvline(time_days, color="black", linestyle="--")
+            ax.axvline(time_days, color="k", linestyle="--", linewidth=LINEWIDTH_THIN)
             cum_axes.append(ax)
 
-    fig.subplots_adjust(left=0.13, right=0.90, bottom=0.05, top=0.96)
-
-    if cum and legend:
-        # `fig.legend` (rather than an axes-scoped legend) spans the full figure
-        # width, so a wide multi-column legend doesn't overflow the narrower
-        # column span of the cumulative/streamline axes. Anchored just below the
-        # cumulative row's rendered content (axes + tick labels + x-label),
-        # growing down into the blank spacer row.
-        fig.canvas.draw()
-        renderer = fig.canvas.get_renderer()
-        cum_bottom = min(ax.get_tightbbox(renderer).transformed(fig.transFigure.inverted()).y0
-                         for ax in cum_axes)
-
-        handles, labels = cum_axes[0].get_legend_handles_labels()
-        fig.legend(handles, labels, loc="upper center", ncol=min(len(labels), 3), frameon=False,
-                  facecolor='none', edgecolor='none', bbox_to_anchor=(0.5, cum_bottom - 0.01),
-                  fontsize=annotation_fontsize)
+    adjust_kw = dict(left=0.13, right=0.90, bottom=0.05, top=0.96)
+    fig.subplots_adjust(**adjust_kw)
 
     stream_axes = []
     last_row = n_header_rows + n_param - 1
@@ -564,9 +595,38 @@ def plot_streamlines_grid(dbs, index, parametrisations=None, slope=-0.1, field_k
 
         stream_axes.append(ax)
 
-    stream_axes[0].text(0.98, 0.97, f"t = {time_days:.0f} days", transform=stream_axes[0].transAxes,
-                        ha="right", va="top", fontsize=annotation_fontsize,
-                        bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, pad=2))
+    time_label(stream_axes[0], time_days)
+
+    if cum and legend:
+        # `fig.legend` (rather than an axes-scoped legend) spans the full figure
+        # width, so a wide multi-column legend doesn't overflow the narrower
+        # column span of the cumulative/streamline axes. Anchored just below the
+        # cumulative row's rendered content (axes + tick labels + x-label),
+        # growing down into the spacer row. The spacer row is enlarged until the
+        # legend no longer overlaps the title of the first streamline panel.
+        to_fig = fig.transFigure.inverted()
+        pad = 0.01
+        leg = None
+        for _ in range(10):
+            if leg is not None:
+                leg.remove()
+            fig.canvas.draw()
+            renderer = fig.canvas.get_renderer()
+            cum_bottom = min(ax.get_tightbbox(renderer).transformed(to_fig).y0 for ax in cum_axes)
+            leg = shared_legend(fig, cum_axes[0], loc="upper center",
+                                bbox_to_anchor=(0.5, cum_bottom - pad), fontsize=annotation_fontsize)
+            fig.canvas.draw()
+            leg_bottom = leg.get_window_extent(renderer).transformed(to_fig).y0
+            stream_top = stream_axes[0].get_tightbbox(renderer).transformed(to_fig).y1
+            overlap = stream_top - (leg_bottom - pad)
+            if overlap <= 0:
+                break
+            # convert the overlap (figure fraction) into height-ratio units via
+            # the height of a streamline row (ratio 1)
+            row_height = stream_axes[0].get_position().height
+            height_ratios[1] += overlap / row_height
+            gs.set_height_ratios(height_ratios)
+            fig.subplots_adjust(**adjust_kw)  # re-position axes on the updated grid
 
     return fig, (tuple(cum_axes), tuple(stream_axes))
 
@@ -577,9 +637,9 @@ def plot_T_grid(dbs, index, parametrisations=None, figsize=None, title_fontsize=
     if parametrisations is None:
         parametrisations = list(dbs.keys())
     if title_fontsize is None:
-        title_fontsize = 10
+        title_fontsize = TITLE_FONTSIZE
     if annotation_fontsize is None:
-        annotation_fontsize = 8
+        annotation_fontsize = FONT_SIZE
 
     n_param = len(parametrisations)
     vmin = np.min(dbs["drying"][field_key][index])
@@ -619,10 +679,9 @@ def plot_T_grid(dbs, index, parametrisations=None, figsize=None, title_fontsize=
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
         fig.colorbar(sm, cax=cax, label=r"$T$ [°C]")
 
-        ax.set_xlabel("x [m]")
-        ax.set_ylabel("z [m]")
-        ax.spines[['top', 'right']].set_visible(False)
-        ax.spines['left'].set_position(('outward', 10))
+        ax.set_xlabel("$x$ [m]")
+        ax.set_ylabel("$z$ [m]")
+        style_axes(ax)
 
         ax.set_title(parametrisation_label_leg(parametrisation) or parametrisation,
                     loc="left", fontsize=title_fontsize, fontweight="bold")
@@ -634,14 +693,12 @@ def plot_T_grid(dbs, index, parametrisations=None, figsize=None, title_fontsize=
 
         T_axes.append(ax)
 
-    T_axes[0].text(0.98, 0.97, f"t = {time_days:.0f} days", transform=T_axes[0].transAxes,
-                   ha="right", va="top", fontsize=annotation_fontsize,
-                   bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, pad=2))
+    time_label(T_axes[0], time_days)
 
     return fig, tuple(T_axes)
 
 
-def plot_krel_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_fontsize=10):
+def plot_krel_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_fontsize=TITLE_FONTSIZE):
     """3D surface of log10(k_rel) vs h_c and T for soil type 1 (sand), used to
     compare the closure shape across parametrisations.
 
@@ -649,8 +706,6 @@ def plot_krel_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_
     on one manuscript text page width (e.g. n_per_row=2 -> each figure is
     8.23 x 8.23 cm).
     """
-    plt.rcParams['font.size'] = 8
-
     if figsize is None:
         width = PAGE_WIDTH_CM/n_per_row*cm
         figsize = (width, width)
@@ -669,7 +724,7 @@ def plot_krel_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_
     ax.set_zticklabels([f'$10^{{{i}}}$' for i in range(-15, 5, 5)])
     ax.set_xlabel(r'$h_c$ [m]')
     ax.set_ylabel(r'$T$ [°C]')
-    ax.set_zlabel(r'$k_{rel}$ [-]')
+    ax.set_zlabel(r'$k_\mathrm{rel}$ [-]')
 
     label = parametrisation_label(param)
     if label:
@@ -679,7 +734,7 @@ def plot_krel_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_
     fig.tight_layout()
     return fig, ax
 
-def plot_theta_l_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_fontsize=10):
+def plot_theta_l_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_fontsize=TITLE_FONTSIZE):
     """3D surface of log10(k_rel) vs h_c and T for soil type 1 (sand), used to
     compare the closure shape across parametrisations.
 
@@ -687,8 +742,6 @@ def plot_theta_l_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, tit
     on one manuscript text page width (e.g. n_per_row=2 -> each figure is
     8.23 x 8.23 cm).
     """
-    plt.rcParams['font.size'] = 8
-
     if figsize is None:
         width = PAGE_WIDTH_CM/n_per_row*cm
         figsize = (width, width)
@@ -728,45 +781,115 @@ def plot_forcing_data(time_array_spin, time_array_sim,
 
     fig, ax = plt.subplots(figsize=(PAGE_WIDTH_CM*cm,7*cm))
     ax_cp = ax.twinx()
-    ax.bar(time_array_spin/24/60/60, recharge_spin_plot, color="#0072B2")
-    ax.hlines(0, time_array_spin[0]/24/60/60, time_array_spin[-1]/24/60/60, color="#0072B2", linestyle="--")
-    ax.hlines(0, time_array_sim[0]/24/60/60, time_array_sim[-1]/24/60/60, color="#0072B2", linestyle="--")
-    ax.bar(time_array_sim/24/60/60, recharge_sim_plot, color="#0072B2")
-    ax.set_ylabel("$q_{inf}$ $[m/s]$", color="#0072B2")
-    ax.tick_params(axis="y", colors="#0072B2")
+    ax.bar(time_array_spin/24/60/60, recharge_spin_plot, color=OI_BLUE)
+    ax.hlines(0, time_array_spin[0]/24/60/60, time_array_spin[-1]/24/60/60, color=OI_BLUE, linestyle="--", linewidth=LINEWIDTH_THIN)
+    ax.hlines(0, time_array_sim[0]/24/60/60, time_array_sim[-1]/24/60/60, color=OI_BLUE, linestyle="--", linewidth=LINEWIDTH_THIN)
+    ax.bar(time_array_sim/24/60/60, recharge_sim_plot, color=OI_BLUE)
+    ax.set_ylabel(r"$q_\mathrm{inf}$ [m/s]", color=OI_BLUE)
+    ax.tick_params(axis="y", colors=OI_BLUE)
     ax.yaxis.set_inverted(True)
-    ax_cp.set_ylabel("$T$ $[°C]$", color="#D55E00")
-    ax_cp.plot(time_array_spin/24/60/60, tl1_array_spin_plot, label="tl1", color="#D55E00")
-    ax_cp.plot(time_array_sim/24/60/60, tl1_array_sim_plot, label="tl1", color="#D55E00")
+    ax_cp.set_ylabel("$T$ [°C]", color=OI_VERMILLION)
+    ax_cp.plot(time_array_spin/24/60/60, tl1_array_spin_plot, label="tl1", color=OI_VERMILLION, linewidth=LINEWIDTH)
+    ax_cp.plot(time_array_sim/24/60/60, tl1_array_sim_plot, label="tl1", color=OI_VERMILLION, linewidth=LINEWIDTH)
 
     ax_cp.set_ylim([min(tl1_array_sim_plot)-2, max(tl1_array_spin_plot)+2])
-    ax_cp.tick_params(axis="y", labelcolor="#D55E00")
-    ax_cp.hlines(0, time_array_spin[0]/24/60/60, time_array_spin[-1]/24/60/60, color="#D55E00", linestyle="--")
-    ax_cp.hlines(0, time_array_sim[0]/24/60/60, time_array_sim[-1]/24/60/60, color="#D55E00", linestyle="--")
+    ax_cp.tick_params(axis="y", colors=OI_VERMILLION)
+    ax_cp.hlines(0, time_array_spin[0]/24/60/60, time_array_spin[-1]/24/60/60, color=OI_VERMILLION, linestyle="--", linewidth=LINEWIDTH_THIN)
+    ax_cp.hlines(0, time_array_sim[0]/24/60/60, time_array_sim[-1]/24/60/60, color=OI_VERMILLION, linestyle="--", linewidth=LINEWIDTH_THIN)
     vline_time = time_array_spin[-1]/24/60/60
-    ax.axvline(x=vline_time, color="k", linestyle="--", zorder=100)
+    ax.axvline(x=vline_time, color="k", linestyle="--", linewidth=LINEWIDTH_THIN, zorder=100)
 
     ax_cp.text(0.075, 0.1, "spinup", ha="left", va="top", transform=ax_cp.transAxes,
-              color="k", fontweight='bold', fontsize=10, zorder=200)
+              color="k", fontweight='bold', fontsize=TITLE_FONTSIZE, zorder=200)
     ax_cp.text(0.52, 0.1, "simulation", ha="left", va="top", transform=ax_cp.transAxes,
-              color="k", fontweight='bold', fontsize=10, zorder=200)
-    ax.spines["top"].set_visible(False)
-    ax.spines["bottom"].set_visible(False)
-    ax_cp.spines["left"].set_visible(False)
-    ax_cp.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines['left'].set_position(('outward', 10))
-    ax_cp.spines['right'].set_position(('outward', 10))
+              color="k", fontweight='bold', fontsize=TITLE_FONTSIZE, zorder=200)
+    style_axes(ax)
+    ax.spines["left"].set_color(OI_BLUE)
+    ax_cp.spines[["left", "top", "bottom"]].set_visible(False)
+    ax_cp.spines["right"].set_visible(True)
+    ax_cp.spines["right"].set_color(OI_VERMILLION)
+    ax_cp.spines['right'].set_position(('outward', SPINE_OFFSET))
 
     ax.xaxis.set_major_locator(mdates.MonthLocator())
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-    # Rotated labels have a bigger visual footprint than horizontal text at the
-    # same point size, so size them down a notch to read at par with body text.
     plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
 
     fig.tight_layout()
 
     return fig, (ax, ax_cp)
+
+def plot_forcing_data_split(time_array_spin, time_array_sim, time_array_ideal,
+                            tl1_array_spin, tl1_array_sim, T_ideal,
+                            recharge_spin, recharge_sim, recharge_ideal):
+    """Plot the forcing as spinup (left, full height) that splits into the ERA5 simulation (top right)
+    and the idealized case (bottom right); each panel has its own time axis.
+    All time arrays are seconds since 1970-01-01 UTC. ERA5 data is smoothed with a 24 h moving average
+    and its recharge drawn as bars; the constant idealized recharge is drawn as a line."""
+    smooth = lambda a: np.convolve(a, np.ones(24)/24, mode="same")
+
+    fig = plt.figure(figsize=(PAGE_WIDTH_CM*cm, 12*cm))
+    duration_spin = time_array_spin[-1] - time_array_spin[0]
+    duration_sim = time_array_sim[-1] - time_array_sim[0]
+    # 4 rows: right panels span two rows each, spinup spans the middle two -> all panels equally high,
+    # spinup centred vertically
+    gs = fig.add_gridspec(4, 2, width_ratios=[duration_spin, duration_sim], wspace=1.0, hspace=3.4)
+    ax_spin = fig.add_subplot(gs[1:3, 0])
+    ax_sim = fig.add_subplot(gs[0:2, 1])
+    ax_ideal = fig.add_subplot(gs[2:4, 1])
+
+    panels = [(ax_spin, "spinup", time_array_spin, smooth(recharge_spin), smooth(tl1_array_spin), True),
+              (ax_sim, "simulation", time_array_sim, smooth(recharge_sim), smooth(tl1_array_sim), True),
+              (ax_ideal, "idealized", time_array_ideal, recharge_ideal, T_ideal, False)]
+    axes_cp = []
+    for ax, title, time_array, recharge, T, bars in panels:
+        t = time_array/24/60/60
+        ax_cp = ax.twinx()
+        axes_cp.append(ax_cp)
+        if bars:
+            ax.bar(t, recharge, width=t[1]-t[0], color=OI_BLUE)
+        else:
+            ax.plot(t, recharge, color=OI_BLUE, linewidth=LINEWIDTH)
+        ax.axhline(0, color=OI_BLUE, linestyle="--", linewidth=LINEWIDTH_THIN)
+        ax.set_ylabel(r"$q_\mathrm{inf}$ [m/s]", color=OI_BLUE)
+        ax.tick_params(axis="y", colors=OI_BLUE)
+        if np.ptp(recharge) == 0:   # constant recharge (idealized case): line a third down, clear of T = 0
+            ax.set_ylim(min(0, 3*recharge[0]), max(0, 3*recharge[0]))
+        ax.set_xlim(t[0], t[-1])
+        ax.yaxis.set_inverted(True)
+
+        ax_cp.plot(t, T, color=OI_VERMILLION, linewidth=LINEWIDTH)
+        ax_cp.axhline(0, color=OI_VERMILLION, linestyle="--", linewidth=LINEWIDTH_THIN)
+        ax_cp.set_ylabel("$T_{surface}$ [°C]", color=OI_VERMILLION)
+        ax_cp.tick_params(axis="y", colors=OI_VERMILLION)
+        ax_cp.set_ylim([min(T) - 2, max(T) + 2])
+
+        style_axes(ax)
+        ax.spines["left"].set_color(OI_BLUE)
+        ax_cp.spines[["left", "top", "bottom"]].set_visible(False)
+        ax_cp.spines["right"].set_visible(True)
+        ax_cp.spines["right"].set_color(OI_VERMILLION)
+        ax_cp.spines['right'].set_position(('outward', SPINE_OFFSET))
+        panel_title(ax, title)
+
+        ax.xaxis.set_major_locator(mdates.MonthLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+        plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+
+    # spinup branches into simulation and idealized case: lines from the spinup centre to the centres
+    # of the right panels, starting/ending just outside the y-axis labels so they don't cross them
+    fig.canvas.draw()
+    to_fig = fig.transFigure.inverted()
+    pad = 0.01
+    x_start = to_fig.transform(axes_cp[0].yaxis.label.get_window_extent().get_points())[1, 0] + pad
+    y_start = ax_spin.get_position().y0 + ax_spin.get_position().height/2
+    for ax in (ax_sim, ax_ideal):
+        x_end = to_fig.transform(ax.yaxis.label.get_window_extent().get_points())[0, 0] - pad
+        y_end = ax.get_position().y0 + ax.get_position().height/2
+        fig.add_artist(ConnectionPatch(xyA=(x_start, y_start), xyB=(x_end, y_end),
+                                       coordsA=fig.transFigure, coordsB=fig.transFigure,
+                                       color="k", linewidth=0.8))
+
+    return fig, (ax_spin, ax_sim, ax_ideal), axes_cp
 
 def create_animation_streamlines(
     X, Z,
@@ -797,12 +920,12 @@ def create_animation_streamlines(
     if time_mode == "date" and dates is not None:
         x_time = dates
         x_full = [dates[0] + timedelta(seconds=float(t)) for t in time_array]
-        x_label = "$t$ [date]"
+        x_label = "date"
         use_dates = True
     else:
         x_time = time_days
         x_full = time_days
-        x_label = "$t$ [days]"
+        x_label = "time [days]"
         use_dates = False
 
     # Helpers
@@ -816,10 +939,10 @@ def create_animation_streamlines(
         return qx_i, qz_i, speed
 
     def draw_domain_outline(ax):
-        ax.plot([X[0,0], X[0,-1]], [Z[0,0], Z[0,-1]], "-k")
-        ax.plot([X[-1,0], X[0,0]], [Z[-1,0], Z[0,0]], "-k")
-        ax.plot([X[-1,0], X[-1,-1]], [Z[-1,0], Z[-1,-1]], "-k")
-        ax.plot([X[0,-1], X[-1,-1]], [Z[0,-1], Z[-1,-1]], "-k")
+        ax.plot([X[0,0], X[0,-1]], [Z[0,0], Z[0,-1]], "-k", linewidth=LINEWIDTH_THIN)
+        ax.plot([X[-1,0], X[0,0]], [Z[-1,0], Z[0,0]], "-k", linewidth=LINEWIDTH_THIN)
+        ax.plot([X[-1,0], X[-1,-1]], [Z[-1,0], Z[-1,-1]], "-k", linewidth=LINEWIDTH_THIN)
+        ax.plot([X[0,-1], X[-1,-1]], [Z[0,-1], Z[-1,-1]], "-k", linewidth=LINEWIDTH_THIN)
 
     def compute_linewidth(speed):
         eps = 1e-20
@@ -843,7 +966,7 @@ def create_animation_streamlines(
     gs = fig.add_gridspec(4, 3, width_ratios=[1, 0.03, 0.01],wspace=0.3, hspace=0.25)
 
     ax_bc = fig.add_subplot(gs[0, 0])   
-    ax_bc.set_title("Surface boundary conditions", loc="left", fontweight="bold")
+    panel_title(ax_bc, "surface boundary conditions")
     ax_cp = ax_bc.twinx()
 
     ax = [fig.add_subplot(gs[i, 0]) for i in range(1, 4)]
@@ -854,16 +977,17 @@ def create_animation_streamlines(
 
     # Top plot (UPDATED)
     dt = np.diff(x_full).mean() if use_dates else np.diff(x_time).mean()
-    ax_bc.bar(x_time, runoff,width=dt, color=carolina_blue,label="runoff")
-    ax_bc.bar(x_time, q_inf, width=dt, color=cobalt,label="infiltration")
+    ax_bc.bar(x_time, runoff,width=dt, color=OI_SKY_BLUE,label="runoff")
+    ax_bc.bar(x_time, q_inf, width=dt, color=OI_BLUE,label="infiltration")
     ax_bc.legend(loc="upper left")
-    ax_bc.set_ylabel("flux [m/s]", color=cobalt)
+    ax_bc.set_ylabel("$q$ [m/s]", color=OI_BLUE)
     ax_bc.invert_yaxis()
 
-    ax_cp.plot(x_time, skt_array, color=persian_red)
-    ax_cp.set_ylabel("T [°C]", color=persian_red)
+    ax_cp.plot(x_time, skt_array, color=OI_VERMILLION)
+    ax_cp.set_ylabel("$T$ [°C]", color=OI_VERMILLION)
+    ax_cp.spines["right"].set_visible(True)
     if time_mode == "date":
-        ax_cp.axhline(0, linestyle="--", color=persian_red)
+        ax_cp.axhline(0, linestyle="--", color=OI_VERMILLION, linewidth=LINEWIDTH_THIN)
 
     time_indicator = ax_cp.axvline(x_time[0], color="k")
 
@@ -873,18 +997,16 @@ def create_animation_streamlines(
         ax_cp.xaxis.set_major_locator(mdates.MonthLocator())
         ax_cp.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
         plt.setp(ax_cp.get_xticklabels(), rotation=45, ha='right')
-        ax_bc.set_xlabel("Time [date]")
-    else:
-        ax_bc.set_xlabel("Time [d]")
+    ax_bc.set_xlabel(x_label)
 
     # Axes formatting
     for a in ax:
         a.set_aspect("equal")
         a.set_xlim([0, 10])
         a.set_ylim([-2, 0])
-        a.set_xlabel("x [m]")
-        a.set_ylabel("z [m]")
-        a.spines[['top', 'right']].set_visible(False)
+        a.set_xlabel("$x$ [m]")
+        a.set_ylabel("$z$ [m]")
+        style_axes(a)
 
     for a in ax[:-1]:
         a.xaxis.set_visible(False)
@@ -994,7 +1116,7 @@ def create_animation_streamlines(
 
 def make_comparison_figure(X,Z,theta_l_cr, theta_i_cr, T_cr, theta_l_pf, theta_i_pf, T_pf, time, time_index=-1, x_cut=-1, cmap='RdBu_r'):
     fig, axs = plt.subplots(figsize=(PAGE_WIDTH_CM*cm,15*cm), nrows=3, ncols=2, constrained_layout=True)
-    fig.suptitle(f"simulation time {np.round(time[time_index]/24/60/60, 0)} d", fontsize=12)
+    fig.suptitle(f"simulation time {time[time_index]/24/60/60:.0f} days")
 
     theta_l_diff = theta_l_cr[time_index][:,:] - theta_l_pf[time_index]
     theta_i_diff = theta_i_cr[time_index][:,:] - theta_i_pf[time_index]
@@ -1005,9 +1127,8 @@ def make_comparison_figure(X,Z,theta_l_cr, theta_i_cr, T_cr, theta_l_pf, theta_i
     print(f"max abs T diff: {np.round(np.max(np.abs(T_diff)), 3)}")
 
     for ax in axs.flatten():
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.set_ylabel('z [m]')
+        style_axes(ax)
+        ax.set_ylabel('$z$ [m]')
 
     ix_cut = np.argmin(np.abs(x_cut - X[0,:]))
 
@@ -1035,10 +1156,10 @@ def make_comparison_figure(X,Z,theta_l_cr, theta_i_cr, T_cr, theta_l_pf, theta_i
     vmax_T = np.max(np.abs(T_diff))
     cbar2 = axs[2,0].pcolormesh(X,Z,T_diff, cmap=cmap, shading='gouraud',vmin=-vmax_T, vmax=vmax_T)
     axs[2,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
-    axs[2,0].set_xlabel('x [m]')
+    axs[2,0].set_xlabel('$x$ [m]')
     axs[2,1].plot(T_cr[time_index][:,ix_cut], Z[:,ix_cut], label='cryorich')
     axs[2,1].plot(T_pf[time_index][:,ix_cut], Z[:,ix_cut],":", label='permaFoam')
-    axs[2,1].set_xlabel('T [°C]')
+    axs[2,1].set_xlabel('$T$ [°C]')
     fig.colorbar(cbar2, ax=axs[2,0], orientation='vertical', label=r'$\Delta T$ [°C]')
 
     return fig,axs
@@ -1050,7 +1171,7 @@ def restrict(f, n=2):
 
 def make_resolution_figure(X_c,Z_c,X_f,Z_f,theta_l_c, theta_i_c, T_i_c, theta_l_f, theta_i_f, T_i_f, time_c, time_index_c=-1, time_index_f=-1, x_cut=-1, cmap='RdBu_r'):
     fig, axs = plt.subplots(figsize=(PAGE_WIDTH_CM*cm,15*cm), nrows=3, ncols=2, constrained_layout=True)
-    fig.suptitle(f"simulation time {np.round(time_c[time_index_c]/24/60/60, 0)} d", fontsize=12)
+    fig.suptitle(f"simulation time {time_c[time_index_c]/24/60/60:.0f} days")
 
     if theta_l_c[time_index_c].shape[0] > theta_l_f[time_index_f].shape[0]:
         n = theta_l_c[time_index_c].shape[0] // theta_l_f[time_index_f].shape[0]
@@ -1082,9 +1203,8 @@ def make_resolution_figure(X_c,Z_c,X_f,Z_f,theta_l_c, theta_i_c, T_i_c, theta_l_
     print(f"max abs T diff: {np.round(np.max(np.abs(T_diff)), 3)}")
 
     for ax in axs.flatten():
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.set_ylabel('z [m]')
+        style_axes(ax)
+        ax.set_ylabel('$z$ [m]')
 
     ix_cut = np.argmin(np.abs(x_cut - X[0,:]))
 
@@ -1112,10 +1232,10 @@ def make_resolution_figure(X_c,Z_c,X_f,Z_f,theta_l_c, theta_i_c, T_i_c, theta_l_
     vmax_T = np.max(np.abs(T_diff))
     cbar2 = axs[2,0].pcolormesh(X,Z,T_diff, cmap=cmap, shading='gouraud',vmin=-vmax_T, vmax=vmax_T)
     axs[2,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
-    axs[2,0].set_xlabel('x [m]')
+    axs[2,0].set_xlabel('$x$ [m]')
     axs[2,1].plot(T_c[:,ix_cut], Z[:,ix_cut], label=r'$\Delta x=0.2$m, $\Delta z=0.005$m')
     axs[2,1].plot(T_f[:,ix_cut], Z[:,ix_cut],":", label=r'$\Delta x=0.1$m, $\Delta z=0.0025$m')
-    axs[2,1].set_xlabel('T [°C]')
+    axs[2,1].set_xlabel('$T$ [°C]')
     fig.colorbar(cbar2, ax=axs[2,0], orientation='vertical', label=r'$\Delta T$ [°C]')
 
     return fig,axs
