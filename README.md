@@ -92,8 +92,8 @@ To rerun the simulations of the publication, run the notebooks in the following 
    - `notebooks/simulation/1Simulate_<param>.ipynb` → `output/simulation/simulation_<param>.pkl`
    - `notebooks/idealized/Idealized_<param>.ipynb` (reads `input/idealized/idealized_forcing.pkl`) → `output/idealized/<param>.pkl`
 4. Figures (`notebooks/creating_figures/`):
-   - `02compare_param.ipynb` → `figures/theory/domain.png`
-   - `03domain_plot.ipynb` → `figures/method/k_rel_<param>.png`
+   - `02compare_param.ipynb` → `figures/theory/k_rel_<param>.png` 
+   - `03domain_plot.ipynb` → `figures/method/domain.png`
    - `04forcing_plot.ipynb` → `figures/method/spin_sim_ideal.png` (forcing of the spinup, ERA5-Land and idealized simulations)
    - `06visualize_results.ipynb` → `figures/results/idealized/` and `figures/results/simulation/`
    - `create_animation.ipynb` → `docu/Figures/<param>.gif`
