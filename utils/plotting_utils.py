@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.sparse import coo_matrix
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 import matplotlib
@@ -81,7 +80,7 @@ def shared_legend(fig, ax, **kwargs):
     return fig.legend(handles, labels, ncol=min(len(labels), 2), frameon=False,
                       handlelength=3, columnspacing=1.5, **kwargs)
 
-
+# COLORMAP for ice content maps
 N = 256
 start = np.array([168, 148, 125]) / 255
 end   = np.array([250, 252, 255]) / 255      # icy white with a bit more blue
@@ -91,11 +90,13 @@ vals = np.ones((N, 4))
 vals[:, :3] = (1 - t)[:, None] * start + t[:, None] * end
 icy_soil = ListedColormap(vals)
 
+# Page size used for plots
 cm = 1/2.54  # centimeters in inches
 
 PAGE_WIDTH_CM = 16.46   
 PAGE_HEIGHT_CM = 22.41 
 
+# Define line style and color for each parametrizations
 parametrisation_STYLE = {
     "drying":             {"color": OI_BLUE,       "linestyle": "-"},
     "drying_omega10":     {"color": OI_SKY_BLUE,   "linestyle": "--"},
@@ -108,8 +109,13 @@ def parametrisation_style(parametrisation):
     return parametrisation_STYLE.get(parametrisation, {"color": "black", "linestyle": "-"})
 
 def parametrisation_label(parametrisation):
-    # same lettering in every figure (theory surfaces, legends, panel titles)
-    return parametrisation_label_leg(parametrisation)
+    """Panel labels for the theory-section surface plots."""
+    return {
+        "drying": "(a) drying assumption",
+        "imp10": r"(b) imp. factor, $\Omega=10$",
+        "imp50": r"(c) imp. factor, $\Omega=50$",
+        "cap": "(d) capillary bundle model",
+    }.get(parametrisation)
 
 def parametrisation_label_leg(parametrisation):
     return {
@@ -120,26 +126,11 @@ def parametrisation_label_leg(parametrisation):
         "drying_omega10": r"(B) drying assumption, with imp. factor $\Omega=10$",
     }.get(parametrisation)
 
-def plot_sparsity_pattern(geom):
-    """Plot the sparsity pattern of jacobian matrix."""
-    S = geom.sparse_pattern
-    indices = np.array(S.indices)
-    data = np.array(S.data)
-
-    # if indices has shape (nnz, 2) -> separate rows/cols
-    rows = indices[:, 0].astype(int)
-    cols = indices[:, 1].astype(int)
-
-    A_coo = coo_matrix((np.ones_like(data), (rows, cols)), shape=S.shape)  # use ones to show pattern only
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.spy(A_coo, markersize=10)
-    return fig, ax
-
-def plot_domain(X, Z, cellValues, colormap="Blues", title=" ", colorbar_label=None):
-    """Plot cell values over the geometry."""
+def plot_domain(X, Z, cellValues, colormap="Blues", title=" "):
+    """Create the overview figrue of the test case used in the manuscript."""
     fig, ax = plt.subplots(1,2,figsize=(PAGE_WIDTH_CM*cm, 7*cm), gridspec_kw={'width_ratios': [1, 0.4]})
     ax[1].set_aspect('equal')
-    cbar = ax[0].pcolormesh(X, Z, cellValues, cmap=colormap,shading = "gouraud", linewidth=0.05)
+    ax[0].pcolormesh(X, Z, cellValues, cmap=colormap,shading = "gouraud", linewidth=0.05)
     ax[0].plot(X[-1,:],Z[-1,:],"-", color = OI_VERMILLION, linewidth = 2,zorder=1000)
 
     ax[0].plot(X[:,0],Z[:,0],"-", color = OI_SKY_BLUE,linewidth = 2, zorder=1004)
@@ -204,13 +195,11 @@ def exit_fluxes(db, cumulative=False, relative=False):
     and groundwater discharge (bottom); surface runoff is summed along the tilted
     top boundary.
 
-    With `cumulative=True`, the fluxes are integrated over the true simulation
-    times (trapezoidal, since the solver uses adaptive stepping) into cumulative
-    exit volumes [m²]. With `relative=True`, each series is expressed as its
-    share of the (running) total q_top+q_bottom+q_surf. The cumulative share is
-    a much less noise-sensitive partitioning metric than the instantaneous flux
-    ratio, since it isn't dominated by short high-flux events (e.g. a single
-    ERA5 snowmelt spike).
+    With `cumulative=True`, the fluxes are integrated over the simulation
+    times into cumulative exit volumes [m²]. 
+    
+    With `relative=True`, each series is expressed as its share of the 
+    total q_top+q_bottom+q_surf. 
     """
     dz = abs(db["Z"][1,0] - db["Z"][0,0])
     dx = abs(db["X"][0,1] - db["X"][0,0])
@@ -221,8 +210,8 @@ def exit_fluxes(db, cumulative=False, relative=False):
     time_s = np.array(db["time_array"])[1:]
     times_days = time_s / 24 / 60 / 60
 
-    # only outflow counts (positive fluxes); NaN is treated as zero
     qx_out = np.array([db["qx_array"][i][:,-1] for i in steps])
+    # account only for outflow 
     qx_out = np.where(qx_out > 0, qx_out, 0)
     q_top = np.sum(qx_out[:, idx_top], axis=1) * dz
     q_bottom = np.sum(qx_out[:, ~idx_top], axis=1) * dz
@@ -241,9 +230,9 @@ def exit_fluxes(db, cumulative=False, relative=False):
 
 def plot_flux_comparison(dbs, parametrisations=None, quantity="top", cumulative=True, relative=False,
                          title=None, ylim=None, fig=None, ax=None, legend=False):
-    """Overlay the exit flux (or cumulative exit volume) of one flow path across several parametrisations.
+    """Create one plot across several parametrisations.
 
-    `dbs` is a dict {parametrisation: db}. `quantity` selects which path to compare
+    `dbs` is a dict {parametrisation: db}. `quantity` selects which flux to compare
     ("top"=interflow, "bottom"=GW discharge, "surf"=surface runoff). If no `ax` is
     given, a new figure is created.
     """
@@ -277,12 +266,7 @@ def plot_flux_comparison(dbs, parametrisations=None, quantity="top", cumulative=
     return fig, ax
 
 def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False, figsize=None, legend=True):
-    """Cumulative exit-volume comparison across parametrisations, one panel
-    per flow path, sidmocean.cm.icee by side, with a shared legend centered below all
-    panels.
-
-    Includes a surface-runoff panel only if any db in `dbs` has nonzero
-    surface runoff; otherwise just interflow and GW discharge.
+    """Cumulative exit-volume comparison across parametrisations, one panel per flow path.
     """
     if parametrisations is None:
         parametrisations = list(dbs.keys())
@@ -306,8 +290,6 @@ def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False
         labels_margin = fig.subplotpars.bottom
 
         leg = shared_legend(fig, axes[0], loc="lower center", bbox_to_anchor=(0.5, 0))
-        # Anchored to the figure bottom, so its rendered height (measured after a
-        # draw) tells us exactly how much extra room to reserve -- no guessed margin.
         fig.canvas.draw()
         legend_height = leg.get_window_extent(fig.canvas.get_renderer()) \
                            .transformed(fig.transFigure.inverted()).height
@@ -318,19 +300,9 @@ def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False
 def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoom_end=135,
                                                   inset_quantities=("surf", "top"),
                                                   figsize=None, legend=True):
-    """Cumulative exit volumes across parametrisations, one panel per flow path
-    (surface runoff, interflow, groundwater discharge). Panels in
-    `inset_quantities` carry a zoomed inset over the pre-melt window
-    (0 to `zoom_end` days).
-
-    Restricting an inset to the pre-melt period sets its y-scale from the
-    smallest, earliest-moving parametrisation rather than from whichever one
-    later dominates the full-period curve (e.g. drying's late, steep rise in
-    interflow) -- otherwise the pre-melt differences between parametrisations
-    are squashed flat. Not every panel needs this: groundwater discharge (the
-    default omission) already diverges visibly across the full time range, so
-    an inset there only magnifies what's already visible rather than revealing
-    anything new -- check before adding it back for a different data set.
+    """
+    Essentially the same plot is created as with 'plot_cumulative_partitioning_grid', but with insets
+    zooming into a defined time span. 
     """
     if parametrisations is None:
         parametrisations = list(dbs.keys())
@@ -382,8 +354,6 @@ def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoo
 
     fig.tight_layout()
     if legend:
-        # Anchored to the figure bottom, so its rendered height (measured after a
-        # draw) tells us exactly how much extra room to reserve -- no guessed margin.
         labels_margin = fig.subplotpars.bottom
         leg = shared_legend(fig, axes[0], loc="lower center", bbox_to_anchor=(0.5, 0))
         fig.canvas.draw()
@@ -407,6 +377,8 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap=icy_soil,
         Physical coordinates of the grid (same shape as qx, qz).
     qx, qz : 2D arrays
         Velocity components at cell centers.
+    slope: float
+        slope of the domain
     field : 2D array or None
         Optional scalar field to plot as background (e.g., theta, head).
     cmap : str
@@ -419,19 +391,6 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap=icy_soil,
         Width of streamlines.
     arrowsize : float
         Arrow size on streamlines.
-    q_min : float or None
-        Absolute cut-off on |q| [m/s]. Cells below it carry no visible flow (frozen /
-        impermeable soil) and are blanked, so no streamline is drawn through them.
-        If None, ``q_rel_min * q_ref`` is used.
-    q_rel_min : float
-        Relative cut-off used when ``q_min`` is None. streamplot is direction-only, so
-        without a cut-off it draws continuous lines through the ice-rich layer even
-        where |q| is orders of magnitude below the applied recharge.
-    q_ref : float or None
-        Flux scale the relative cut-off refers to [m/s]. The applied recharge is the
-        meaningful one - it is the same for every parametrisation, so the panels stay
-        comparable. ``plot_streamlines_grid`` passes it from ``db["q_inf_interp"]``.
-        If None, ``max|q|`` of this panel is used, which is panel-dependent.
     minlength : float
         Shortest trajectory streamplot still draws, in normalised domain units. The
         default of matplotlib (0.1) throws away every path that the frozen layer cuts
@@ -457,13 +416,11 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap=icy_soil,
     else:
         cax0 = cax
 
-    # ax.set_aspect('equal')
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     style_axes(ax)
 
     # scalar field of ice content as background
-
     pcm = ax.pcolormesh(X, Z, field,vmin=0,vmax=0.46,shading="gouraud", cmap=cmap)
     if cax0 is not None:
         fig.colorbar(pcm, cax=cax0,label=r"$\theta_i$ [-]")
@@ -477,7 +434,7 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap=icy_soil,
     Xg, Zg = np.meshgrid(xg, zg)
 
     # Seeds in the top and the bottom row of cells, placed on the actual cell centres of
-    # the sheared mesh rather than on a hard-coded offset below the surface.
+    # the sheared mesh.
     if start_points is None:
         inset = abs(Z[1, 0] - Z[0, 0])
         x_top = np.linspace(X.min(), X.max(), n_seeds + 2)[1:-1]
@@ -489,14 +446,14 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap=icy_soil,
     start_points = np.asarray(start_points, dtype=np.float64)
 
     # streamplot needs the Cartesian components. qx is the flux through the vertical faces,
-    # i.e. already the horizontal Darcy component (positive = +x = downslope for s < 0).
+    # i.e. already the horizontal Darcy component.
     # qz is the flux normal to the tilted top/bottom faces, n = (-s, 1)/sqrt(1+s^2), so
     # qz = (q_z - s*q_x)/sqrt(1+s^2)  ->  q_z = sqrt(1+s^2)*qz + s*qx.
     qz_cart = np.sqrt(1 + slope**2) * qz + slope * qx
     qx_interp = griddata((X.flatten(), Z.flatten()), qx.flatten(), (Xg, Zg), method="linear")
     qz_interp = griddata((X.flatten(), Z.flatten()), qz_cart.flatten(), (Xg, Zg), method="linear")
 
-    stream = ax.streamplot(
+    ax.streamplot(
         xg, zg, qx_interp, qz_interp,
         density=density,
         color=color,
@@ -598,12 +555,6 @@ def plot_streamlines_grid(dbs, index, parametrisations=None, slope=-0.1, field_k
     time_label(stream_axes[0], time_days)
 
     if cum and legend:
-        # `fig.legend` (rather than an axes-scoped legend) spans the full figure
-        # width, so a wide multi-column legend doesn't overflow the narrower
-        # column span of the cumulative/streamline axes. Anchored just below the
-        # cumulative row's rendered content (axes + tick labels + x-label),
-        # growing down into the spacer row. The spacer row is enlarged until the
-        # legend no longer overlaps the title of the first streamline panel.
         to_fig = fig.transFigure.inverted()
         pad = 0.01
         leg = None
@@ -621,12 +572,10 @@ def plot_streamlines_grid(dbs, index, parametrisations=None, slope=-0.1, field_k
             overlap = stream_top - (leg_bottom - pad)
             if overlap <= 0:
                 break
-            # convert the overlap (figure fraction) into height-ratio units via
-            # the height of a streamline row (ratio 1)
             row_height = stream_axes[0].get_position().height
             height_ratios[1] += overlap / row_height
             gs.set_height_ratios(height_ratios)
-            fig.subplots_adjust(**adjust_kw)  # re-position axes on the updated grid
+            fig.subplots_adjust(**adjust_kw) 
 
     return fig, (tuple(cum_axes), tuple(stream_axes))
 
@@ -644,6 +593,7 @@ def plot_T_grid(dbs, index, parametrisations=None, figsize=None, title_fontsize=
     n_param = len(parametrisations)
     vmin = np.min(dbs["drying"][field_key][index])
     vmax =  np.max(dbs["drying"][field_key][index])
+
     for parametrisation in parametrisations:
         T = np.array(dbs[parametrisation][field_key][index])
         if np.min(T) < vmin:
@@ -673,9 +623,7 @@ def plot_T_grid(dbs, index, parametrisations=None, figsize=None, title_fontsize=
         field = np.array(dbs[parametrisation][field_key][index])
         ax.pcolormesh(dbs[parametrisation]["X"], dbs[parametrisation]["Z"], field,
                      vmin=vmin, vmax=vmax, shading="gouraud", cmap=cmap)
-        # colorbar built from a plain ScalarMappable (not the gouraud QuadMesh
-        # itself), which otherwise can leave a thin uncolored sliver at one end
-        # when a row's own data doesn't span the full shared vmin/vmax range.
+      
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
         fig.colorbar(sm, cax=cax, label=r"$T$ [°C]")
 
@@ -701,13 +649,9 @@ def plot_T_grid(dbs, index, parametrisations=None, figsize=None, title_fontsize=
 def plot_krel_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_fontsize=TITLE_FONTSIZE):
     """3D surface of log10(k_rel) vs h_c and T for soil type 1 (sand), used to
     compare the closure shape across parametrisations.
-
-    Defaults to a figure sized so that `n_per_row` of these fit side by side
-    on one manuscript text page width (e.g. n_per_row=2 -> each figure is
-    8.23 x 8.23 cm).
     """
     if figsize is None:
-        width = PAGE_WIDTH_CM/n_per_row*cm
+        width = (PAGE_WIDTH_CM-3.5*cm)/n_per_row*cm
         figsize = (width, width)
 
     X, Y = jnp.meshgrid(hc, T)
@@ -735,12 +679,8 @@ def plot_krel_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_
     return fig, ax
 
 def plot_theta_l_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, title_fontsize=TITLE_FONTSIZE):
-    """3D surface of log10(k_rel) vs h_c and T for soil type 1 (sand), used to
+    """3D surface of theta_l vs h_c and T for soil type 1 (sand), used to
     compare the closure shape across parametrisations.
-
-    Defaults to a figure sized so that `n_per_row` of these fit side by side
-    on one manuscript text page width (e.g. n_per_row=2 -> each figure is
-    8.23 x 8.23 cm).
     """
     if figsize is None:
         width = PAGE_WIDTH_CM/n_per_row*cm
@@ -769,60 +709,11 @@ def plot_theta_l_surface(soil_type, param, hc, T, figsize=None, n_per_row=2, tit
     fig.tight_layout()
     return fig, ax
 
-def plot_forcing_data(time_array_spin, time_array_sim,
-                      tl1_array_spin, tl1_array_sim,
-                      recharge_spin, recharge_sim):
-    """Plot ERA5 forcing data (recharge + skin/soil temperature) for the spinup and simulation periods."""
-    recharge_sim_plot = np.convolve(recharge_sim, np.ones(24)/24, mode="same")
-    recharge_spin_plot = np.convolve(recharge_spin, np.ones(24)/24, mode="same")
-    tl1_array_sim_plot = np.convolve(tl1_array_sim,np.ones(24)/24, mode="same")
-    tl1_array_spin_plot = np.convolve(tl1_array_spin,np.ones(24)/24, mode="same")
-
-
-    fig, ax = plt.subplots(figsize=(PAGE_WIDTH_CM*cm,7*cm))
-    ax_cp = ax.twinx()
-    ax.bar(time_array_spin/24/60/60, recharge_spin_plot, color=OI_BLUE)
-    ax.hlines(0, time_array_spin[0]/24/60/60, time_array_spin[-1]/24/60/60, color=OI_BLUE, linestyle="--", linewidth=LINEWIDTH_THIN)
-    ax.hlines(0, time_array_sim[0]/24/60/60, time_array_sim[-1]/24/60/60, color=OI_BLUE, linestyle="--", linewidth=LINEWIDTH_THIN)
-    ax.bar(time_array_sim/24/60/60, recharge_sim_plot, color=OI_BLUE)
-    ax.set_ylabel(r"$q_\mathrm{inf}$ [m/s]", color=OI_BLUE)
-    ax.tick_params(axis="y", colors=OI_BLUE)
-    ax.yaxis.set_inverted(True)
-    ax_cp.set_ylabel("$T$ [°C]", color=OI_VERMILLION)
-    ax_cp.plot(time_array_spin/24/60/60, tl1_array_spin_plot, label="tl1", color=OI_VERMILLION, linewidth=LINEWIDTH)
-    ax_cp.plot(time_array_sim/24/60/60, tl1_array_sim_plot, label="tl1", color=OI_VERMILLION, linewidth=LINEWIDTH)
-
-    ax_cp.set_ylim([min(tl1_array_sim_plot)-2, max(tl1_array_spin_plot)+2])
-    ax_cp.tick_params(axis="y", colors=OI_VERMILLION)
-    ax_cp.hlines(0, time_array_spin[0]/24/60/60, time_array_spin[-1]/24/60/60, color=OI_VERMILLION, linestyle="--", linewidth=LINEWIDTH_THIN)
-    ax_cp.hlines(0, time_array_sim[0]/24/60/60, time_array_sim[-1]/24/60/60, color=OI_VERMILLION, linestyle="--", linewidth=LINEWIDTH_THIN)
-    vline_time = time_array_spin[-1]/24/60/60
-    ax.axvline(x=vline_time, color="k", linestyle="--", linewidth=LINEWIDTH_THIN, zorder=100)
-
-    ax_cp.text(0.075, 0.1, "spinup", ha="left", va="top", transform=ax_cp.transAxes,
-              color="k", fontweight='bold', fontsize=TITLE_FONTSIZE, zorder=200)
-    ax_cp.text(0.52, 0.1, "simulation", ha="left", va="top", transform=ax_cp.transAxes,
-              color="k", fontweight='bold', fontsize=TITLE_FONTSIZE, zorder=200)
-    style_axes(ax)
-    ax.spines["left"].set_color(OI_BLUE)
-    ax_cp.spines[["left", "top", "bottom"]].set_visible(False)
-    ax_cp.spines["right"].set_visible(True)
-    ax_cp.spines["right"].set_color(OI_VERMILLION)
-    ax_cp.spines['right'].set_position(('outward', SPINE_OFFSET))
-
-    ax.xaxis.set_major_locator(mdates.MonthLocator())
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-
-    fig.tight_layout()
-
-    return fig, (ax, ax_cp)
-
 def plot_forcing_data_split(time_array_spin, time_array_sim, time_array_ideal,
                             tl1_array_spin, tl1_array_sim, T_ideal,
                             recharge_spin, recharge_sim, recharge_ideal):
-    """Plot the forcing as spinup (left, full height) that splits into the ERA5 simulation (top right)
-    and the idealized case (bottom right); each panel has its own time axis.
+    """Plot the forcing as spinup (left) that splits into the ERA5 simulation (top right)
+    and the idealized case (bottom right).
     All time arrays are seconds since 1970-01-01 UTC. ERA5 data is smoothed with a 24 h moving average
     and its recharge drawn as bars; the constant idealized recharge is drawn as a line."""
     smooth = lambda a: np.convolve(a, np.ones(24)/24, mode="same")
@@ -899,7 +790,7 @@ def create_animation_streamlines(
     time_array,
     dates=None,
     slope=0,
-    time_mode=None,   # NEW: "date" | "days" | None (auto)
+    time_mode=None,   
     density=1,
     linewidth=2,
     cmaps=("Blues", "bone_r", "coolwarm"),
@@ -910,7 +801,7 @@ def create_animation_streamlines(
 ):
     """Animate scalar fields and streamlines over time with flexible time axis."""
 
-    # Time handling (NEW)
+    # Time handling
     time_days = (time_array - time_array[0]) / 86400
 
     # auto-detect mode if not provided
@@ -958,7 +849,6 @@ def create_animation_streamlines(
             lw = lw / maxlw * linewidth
         else:
             lw = np.ones_like(lw) * 0.2
-
         return lw
     
     # Figure layout
@@ -977,8 +867,8 @@ def create_animation_streamlines(
 
     # Top plot (UPDATED)
     dt = np.diff(x_full).mean() if use_dates else np.diff(x_time).mean()
-    ax_bc.bar(x_time, runoff,width=dt, color=OI_SKY_BLUE,label="runoff")
     ax_bc.bar(x_time, q_inf, width=dt, color=OI_BLUE,label="infiltration")
+    ax_bc.bar(x_time, runoff,width=dt, color=OI_SKY_BLUE,label="runoff")
     ax_bc.legend(loc="upper left")
     ax_bc.set_ylabel("$q$ [m/s]", color=OI_BLUE)
     ax_bc.invert_yaxis()
@@ -1032,9 +922,11 @@ def create_animation_streamlines(
     qx_i, qz_i, speed = interpolate_flow(qx_t[-1], qz_t[-1])
     lw = compute_linewidth(speed)
 
-    norm = matplotlib.colors.Normalize(
-        vmin=np.nanmin(speed),
-        vmax=np.nanmax(speed)
+    # log10-distributed colormap; 
+    norm = matplotlib.colors.LogNorm(
+        vmin=np.nanmin(speed[speed > 0]),
+        vmax=np.nanmax(speed),
+        clip=True
     )
 
     start_points = np.c_[
@@ -1045,7 +937,7 @@ def create_animation_streamlines(
     stream = ax[0].streamplot(
         xg, zg, qx_i, qz_i,
         density=density,
-        color=speed,
+        color=np.maximum(speed, norm.vmin),
         cmap=cmap_stream,
         linewidth=lw,
         start_points=start_points,
@@ -1081,7 +973,7 @@ def create_animation_streamlines(
         ax[0].streamplot(
             xg, zg, qx_i, qz_i,
             density=density,
-            color=speed,
+            color=np.maximum(speed, norm.vmin),
             cmap=cmap_stream,
             linewidth=lw,
             start_points=start_points,
@@ -1115,6 +1007,7 @@ def create_animation_streamlines(
     return ani, fig, ax
 
 def make_comparison_figure(X,Z,theta_l_cr, theta_i_cr, T_cr, theta_l_pf, theta_i_pf, T_pf, time, time_index=-1, x_cut=-1, cmap='RdBu_r'):
+    """ Comparison figure for supplementary material. Compares our solver with permaFoam."""
     fig, axs = plt.subplots(figsize=(PAGE_WIDTH_CM*cm,15*cm), nrows=3, ncols=2, constrained_layout=True)
     fig.suptitle(f"simulation time {time[time_index]/24/60/60:.0f} days")
 
@@ -1159,82 +1052,6 @@ def make_comparison_figure(X,Z,theta_l_cr, theta_i_cr, T_cr, theta_l_pf, theta_i
     axs[2,0].set_xlabel('$x$ [m]')
     axs[2,1].plot(T_cr[time_index][:,ix_cut], Z[:,ix_cut], label='cryorich')
     axs[2,1].plot(T_pf[time_index][:,ix_cut], Z[:,ix_cut],":", label='permaFoam')
-    axs[2,1].set_xlabel('$T$ [°C]')
-    fig.colorbar(cbar2, ax=axs[2,0], orientation='vertical', label=r'$\Delta T$ [°C]')
-
-    return fig,axs
-
-def restrict(f, n=2):
-    """Average fine nxn blocks onto coarse cells (cell-centred, conservative)."""
-    nz, nx = f.shape
-    return np.asarray(f).reshape(nz // n, n, nx // n, n).mean(axis=(1, 3))
-
-def make_resolution_figure(X_c,Z_c,X_f,Z_f,theta_l_c, theta_i_c, T_i_c, theta_l_f, theta_i_f, T_i_f, time_c, time_index_c=-1, time_index_f=-1, x_cut=-1, cmap='RdBu_r'):
-    fig, axs = plt.subplots(figsize=(PAGE_WIDTH_CM*cm,15*cm), nrows=3, ncols=2, constrained_layout=True)
-    fig.suptitle(f"simulation time {time_c[time_index_c]/24/60/60:.0f} days")
-
-    if theta_l_c[time_index_c].shape[0] > theta_l_f[time_index_f].shape[0]:
-        n = theta_l_c[time_index_c].shape[0] // theta_l_f[time_index_f].shape[0]
-        th_l_c = restrict(theta_l_c[time_index_c], n=n)   
-        th_l_f = np.asarray(theta_l_f[time_index_f])
-        th_i_c = restrict(theta_i_c[time_index_c], n=n) 
-        th_i_f = np.asarray(theta_i_f[time_index_f])
-        T_c = restrict(T_i_c[time_index_c], n=n)
-        T_f = np.asarray(T_i_f[time_index_f])
-        X = X_f
-        Z = Z_f
-
-    else:
-        n = theta_l_f[time_index_f].shape[0] // theta_l_c[time_index_c].shape[0]
-        th_l_f = restrict(theta_l_f[time_index_f], n=n)
-        th_l_c = np.asarray(theta_l_c[time_index_c])
-        th_i_f = restrict(theta_i_f[time_index_f], n=n)
-        th_i_c = np.asarray(theta_i_c[time_index_c])
-        T_f = restrict(T_i_f[time_index_f], n=n)
-        T_c = np.asarray(T_i_c[time_index_c])
-        X = X_c
-        Z = Z_c
-    theta_l_diff = th_l_c - th_l_f
-    theta_i_diff = th_i_c - th_i_f
-    T_diff  = T_c - T_f    
-
-    print(f"max abs theta_l diff: {np.round(np.max(np.abs(theta_l_diff)), 3)}")
-    print(f"max abs theta_i diff: {np.round(np.max(np.abs(theta_i_diff)), 3)}")
-    print(f"max abs T diff: {np.round(np.max(np.abs(T_diff)), 3)}")
-
-    for ax in axs.flatten():
-        style_axes(ax)
-        ax.set_ylabel('$z$ [m]')
-
-    ix_cut = np.argmin(np.abs(x_cut - X[0,:]))
-
-    vmax_theta_l = np.max(np.abs(theta_l_diff))
-    cbar0 = axs[0,0].pcolormesh(X,Z,theta_l_diff, cmap=cmap, shading='gouraud',vmin=-vmax_theta_l, vmax=vmax_theta_l)
-    axs[0,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
-    axs[0,0].spines["bottom"].set_visible(False)
-    axs[0,0].axes.get_xaxis().set_visible(False)
-    axs[0,1].plot(th_l_c[:,ix_cut], Z[:,ix_cut], label=r'$\Delta x=0.2$m, $\Delta z=0.005$m')
-    axs[0,1].plot(th_l_f[:,ix_cut], Z[:,ix_cut],":", label=r'$\Delta x=0.1$m, $\Delta z=0.0025$m')
-    axs[0,1].set_xlabel(r'$\theta_l$ [-]')
-    axs[0,1].legend(loc = "upper center", frameon=False)
-    fig.colorbar(cbar0, ax=axs[0,0], orientation='vertical', label=r'$\Delta \theta_l$ [-]')
-
-    vmax_theta_i = np.max(np.abs(theta_i_diff))
-    cbar1 = axs[1,0].pcolormesh(X,Z,theta_i_diff, cmap=cmap, shading='gouraud',vmin=-vmax_theta_i, vmax=vmax_theta_i)
-    axs[1,0].spines["bottom"].set_visible(False)
-    axs[1,0].axes.get_xaxis().set_visible(False)
-    axs[1,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
-    axs[1,1].plot(th_i_c[:,ix_cut], Z[:,ix_cut], label=r'$\Delta x=0.2$m, $\Delta z=0.005$m')
-    axs[1,1].plot(th_i_f[:,ix_cut], Z[:,ix_cut],":", label=r'$\Delta x=0.1$m, $\Delta z=0.0025$m')
-    axs[1,1].set_xlabel(r'$\theta_i$ [-]')
-    fig.colorbar(cbar1, ax=axs[1,0], orientation='vertical', label=r'$\Delta \theta_i$ [-]')
-
-    vmax_T = np.max(np.abs(T_diff))
-    cbar2 = axs[2,0].pcolormesh(X,Z,T_diff, cmap=cmap, shading='gouraud',vmin=-vmax_T, vmax=vmax_T)
-    axs[2,0].axvline(x=X[0,ix_cut], color='k', lw=1.0, ls="--",zorder=10)
-    axs[2,0].set_xlabel('$x$ [m]')
-    axs[2,1].plot(T_c[:,ix_cut], Z[:,ix_cut], label=r'$\Delta x=0.2$m, $\Delta z=0.005$m')
-    axs[2,1].plot(T_f[:,ix_cut], Z[:,ix_cut],":", label=r'$\Delta x=0.1$m, $\Delta z=0.0025$m')
     axs[2,1].set_xlabel('$T$ [°C]')
     fig.colorbar(cbar2, ax=axs[2,0], orientation='vertical', label=r'$\Delta T$ [°C]')
 

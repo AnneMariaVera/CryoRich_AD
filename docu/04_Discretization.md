@@ -2,7 +2,7 @@
 
 ## 1. Mesh
 
-![](../Figures/domain.png)
+![](/Figures/domain.png)
 
 The domain is a hillslope with slope $s$. It is discretized by parallelograms oriented along the surface slope (terrain-following grid cells): each row of cells follows the slope, the left ($l$) and right ($r$) faces are vertical, and the top ($t$) and bottom ($b$) faces are tilted. All cells have the area $A=\Delta x\Delta z$ and the face lengths
 

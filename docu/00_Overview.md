@@ -13,7 +13,7 @@ The notation in this guide follows the publication *Groundwater Recharge or Runo
 
 ## 1. Conceptual overview
 
-![Conceptual model of water flow and heat transport in a partially frozen, sloped soil column](../Figures/concept.png)
+![Conceptual model of water flow and heat transport in a partially frozen, sloped soil column](/Figures/concept.png)
 
 Primary variables: total hydraulic head ($h_{tot}$) and temperature ($T$).
 
