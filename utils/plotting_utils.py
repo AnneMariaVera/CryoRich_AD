@@ -203,7 +203,9 @@ def exit_fluxes(db, cumulative=False, relative=False):
     """
     dz = abs(db["Z"][1,0] - db["Z"][0,0])
     dx = abs(db["X"][0,1] - db["X"][0,0])
-    dx_tilde = np.sqrt(dx**2 + dz**2)
+    slope = 0.1
+    dx_tilde = dx * np.sqrt(1 + slope**2)
+
     idx_top = db["Z"][:,-1] >= -1.5
 
     steps = range(1, len(db["time_array"]))
@@ -297,7 +299,7 @@ def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False
 
     return fig, tuple(axes)
 
-def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoom_end=135,
+def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoom_end=150,
                                                   inset_quantities=("surf", "top"),
                                                   figsize=None, legend=True):
     """
@@ -725,12 +727,12 @@ def plot_forcing_data_split(time_array_spin, time_array_sim, time_array_ideal,
     # spinup centred vertically
     gs = fig.add_gridspec(4, 2, width_ratios=[duration_spin, duration_sim], wspace=1.0, hspace=3.4)
     ax_spin = fig.add_subplot(gs[1:3, 0])
-    ax_sim = fig.add_subplot(gs[0:2, 1])
-    ax_ideal = fig.add_subplot(gs[2:4, 1])
+    ax_ideal = fig.add_subplot(gs[0:2, 1])
+    ax_sim = fig.add_subplot(gs[2:4, 1])
 
     panels = [(ax_spin, "spinup", time_array_spin, smooth(recharge_spin), smooth(tl1_array_spin), True),
-              (ax_sim, "simulation", time_array_sim, smooth(recharge_sim), smooth(tl1_array_sim), True),
-              (ax_ideal, "idealized", time_array_ideal, recharge_ideal, T_ideal, False)]
+              (ax_ideal, "idealized", time_array_ideal, recharge_ideal, T_ideal, False),
+              (ax_sim, "simulation", time_array_sim, smooth(recharge_sim), smooth(tl1_array_sim), True)]
     axes_cp = []
     for ax, title, time_array, recharge, T, bars in panels:
         t = time_array/24/60/60
