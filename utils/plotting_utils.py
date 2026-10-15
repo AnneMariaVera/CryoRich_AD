@@ -128,7 +128,7 @@ def parametrisation_label_leg(parametrisation):
 
 def plot_domain(X, Z, cellValues, colormap="Blues", title=" "):
     """Create the overview figrue of the test case used in the manuscript."""
-    fig, ax = plt.subplots(1,2,figsize=(PAGE_WIDTH_CM*cm, 7*cm), gridspec_kw={'width_ratios': [1, 0.4]})
+    fig, ax = plt.subplots(1,2,figsize=(PAGE_WIDTH_CM*cm, 5*cm), gridspec_kw={'width_ratios': [1, 0.4]})
     ax[1].set_aspect('equal')
     ax[0].pcolormesh(X, Z, cellValues, cmap=colormap,shading = "gouraud", linewidth=0.05)
     ax[0].plot(X[-1,:],Z[-1,:],"-", color = OI_VERMILLION, linewidth = 2,zorder=1000)
@@ -720,7 +720,7 @@ def plot_forcing_data_split(time_array_spin, time_array_sim, time_array_ideal,
     and its recharge drawn as bars; the constant idealized recharge is drawn as a line."""
     smooth = lambda a: np.convolve(a, np.ones(24)/24, mode="same")
 
-    fig = plt.figure(figsize=(PAGE_WIDTH_CM*cm, 12*cm))
+    fig = plt.figure(figsize=(PAGE_WIDTH_CM*cm, 11*cm))
     duration_spin = time_array_spin[-1] - time_array_spin[0]
     duration_sim = time_array_sim[-1] - time_array_sim[0]
     # 4 rows: right panels span two rows each, spinup spans the middle two -> all panels equally high,
@@ -766,7 +766,7 @@ def plot_forcing_data_split(time_array_spin, time_array_sim, time_array_ideal,
 
         ax.xaxis.set_major_locator(mdates.MonthLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-        plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+        plt.setp(ax.get_xticklabels(), rotation=35, ha='right')
 
     # spinup branches into simulation and idealized case: lines from the spinup centre to the centres
     # of the right panels, starting/ending just outside the y-axis labels so they don't cross them
