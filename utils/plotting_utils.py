@@ -267,7 +267,7 @@ def plot_flux_comparison(dbs, parametrisations=None, quantity="top", cumulative=
         fig.tight_layout()
     return fig, ax
 
-def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False, figsize=None, legend=True):
+def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False, figsize=None, legend=True,index=None):
     """Cumulative exit-volume comparison across parametrisations, one panel per flow path.
     """
     if parametrisations is None:
@@ -279,12 +279,16 @@ def plot_cumulative_partitioning_grid(dbs, parametrisations=None, relative=False
               "bottom": "groundwater discharge"}
 
     if figsize is None:
-        figsize = (PAGE_WIDTH_CM*cm, 7*cm)
+        figsize = (PAGE_WIDTH_CM*cm, 5*cm)
     fig, axes = plt.subplots(1, len(quantities), figsize=figsize)
+    if index is not None: 
+        time_days = np.asarray(dbs[parametrisations[0]]["time_array"])[index] / (24 * 60 * 60)
 
     for ax, quantity in zip(axes, quantities):
         plot_flux_comparison(dbs, parametrisations, quantity=quantity, relative=relative,
                              title=titles[quantity], fig=fig, ax=ax)
+        if index is not None:
+            ax.axvline(time_days, color="k", linestyle="--", linewidth=LINEWIDTH_THIN)
         if ax is not axes[0]:
             ax.set_ylabel("")
     fig.tight_layout()
@@ -317,7 +321,7 @@ def plot_cumulative_partitioning_grid_with_inset(dbs, parametrisations=None, zoo
         series[p] = {"t": times, "surf": Qsurf, "top": Qtop, "bottom": Qbot}
 
     if figsize is None:
-        figsize = (PAGE_WIDTH_CM*cm, 7*cm)
+        figsize = (PAGE_WIDTH_CM*cm, 5*cm)
     fig, axes = plt.subplots(1, 3, figsize=figsize)
     insets = []
 
@@ -481,7 +485,7 @@ def plot_streamlines(X, Z, qx, qz, slope, field=None, cmap=icy_soil,
 
 def plot_streamlines_grid(dbs, index, parametrisations=None, slope=-0.1, field_key="theta_i_total",
                           relative=False, figsize=None, title_fontsize=None, annotation_fontsize=None,
-                          cum=True, cum_height_ratio=1.3, legend=True, q_rel_min=1e-3):
+                          cum=True, cum_height_ratio=1.3, legend=True):
     """
     Combined figure: the streamline field for each parametrisation stacked in
     rows (one row per parametrisation). If `cum` is True (default), a row with
